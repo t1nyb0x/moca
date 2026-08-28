@@ -4,7 +4,7 @@
 - 作成日: 2026-08-29
 - 状態: ドラフト
 
-要件定義書（`requirements.md`）の第 5 章および第 6 章を、実装に落とせる粒度まで具体化した文書。インターフェースのシグネチャは実装時に調整されうる指針であり、確定仕様ではない。
+要件定義書（`requirements.md`）の第 5 章を、実装に落とせる粒度まで具体化した文書。個々の設計判断の根拠は `adr/` を、IPC の具体的な型と制約は `ipc-contract.md` を参照する。インターフェースのシグネチャは実装時に調整されうる指針であり、確定仕様ではない。
 
 ---
 
@@ -315,9 +315,13 @@ P3 の透過マスコットウィンドウは Tauri のウィンドウ設定の�
 |---|---|---|
 | アプリ基盤 | Tauri v2 | capabilities による権限制御を利用する |
 | バックエンド | Rust / tokio / reqwest / serde | Anthropic は Rust 公式 SDK がないため raw HTTP |
+| ロギング | tracing / tracing-appender | 機密は `Secret` newtype で保護（ADR-0011） |
 | 機密情報 | keyring | Windows 資格情報マネージャー |
 | 設定永続化 | tauri-plugin-store | |
-| フロントエンド | TypeScript / Vite | フレームワークは未決（U-1） |
+| フロントエンド | React + TypeScript / Vite | 3D キャンバスは React の管理外（ADR-0007） |
+| 状態管理 | Zustand | フック外から読み書きできることが要件（ADR-0008） |
+| IPC ストリーミング | Tauri v2 `ipc::Channel` | 要求ごとに独立（ADR-0009） |
+| 型の同期 | ts-rs | Rust の DTO から TS 型を生成し二重管理を避ける |
 | 3D | three.js / @pixiv/three-vrm | PMX は P1 で MMDLoader + ammo.js |
 | テスト | cargo test / wiremock / Vitest / WebdriverIO + tauri-driver | |
 
