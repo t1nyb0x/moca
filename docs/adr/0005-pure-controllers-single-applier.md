@@ -14,9 +14,13 @@ CLAUDE.md はテスト駆動開発とカバレッジ 80% 以上を求めてい�
 すべてのモーション制御を、次の形の純粋関数として実装する。
 
 ```ts
-evaluate(state: S, elapsedSeconds: number): WeightMap   // 副作用なし
-advance(state: S, deltaSeconds: number): S              // 次状態を返す
+advance(state: S, deltaSeconds: number): S   // 唯一の時間依存な遷移
+evaluate(state: S): WeightMap                // 副作用のない射影
 ```
+
+当初は `evaluate(state, elapsedSeconds)` の形を想定していたが、状態が
+時間を保持する以上その引数は冗長であり、`advance` だけを時間依存に
+することで純粋性がより明確になる。実装時にこの形へ寄せた。
 
 three.js への書き込みは `MorphApplier` 1 クラスに限定する。コントローラは three.js を import しない。
 

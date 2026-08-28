@@ -186,10 +186,10 @@ type MorphTarget = { name: string; weight: number };
 type WeightMap = Readonly<Record<string, number>>;
 
 interface Controller<S> {
-  /** 副作用を持たない。同じ (state, t) には同じ結果を返す。 */
-  evaluate(state: S, elapsedSeconds: number): WeightMap;
-  /** 次フレームの状態。乱数は seed として state に含める。 */
+  /** 次フレームの状態。乱数生成器の状態は S に含めて決定的にする。 */
   advance(state: S, deltaSeconds: number): S;
+  /** 副作用を持たない射影。同じ state には同じ結果を返す。 */
+  evaluate(state: S): WeightMap;
 }
 ```
 
@@ -199,7 +199,7 @@ interface Controller<S> {
 |---|---|---|
 | `BlinkController` | `blink` | F-04-1 |
 | `SaccadeController` | `lookUp` / `lookDown` / `lookLeft` / `lookRight` | F-04-2 |
-| `BreathController` | 胸部・脊椎ボーンの回転（モーフではなくボーン変位） | F-04-4 |
+| `BreathController` | 胸部・脊椎ボーンの回転。これだけは `WeightMap` ではなく `BreathOutput` を返す | F-04-4 |
 | `ExpressionController` | `happy` / `angry` / `sad` / `relaxed` / `surprised` | F-07 |
 | `LipSyncController` | `aa` / `ih` / `ou` / `ee` / `oh` | F-08 |
 

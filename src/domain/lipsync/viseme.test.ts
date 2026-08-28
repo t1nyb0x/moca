@@ -86,6 +86,12 @@ describe("cueOf", () => {
     );
   });
 
+  describe("境界", () => {
+    it("空文字は close になる", () => {
+      expect(cueOf("")).toEqual(close);
+    });
+  });
+
   describe("その他", () => {
     it.each(["漢", "字", "A", "z", "1"])(
       "カナ以外の %s は既定で aa になる",

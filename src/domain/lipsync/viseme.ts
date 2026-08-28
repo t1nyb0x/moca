@@ -22,8 +22,7 @@ const KANA_OFFSET = 0x60;
 
 /** カタカナを平仮名へ正規化する。写像表を平仮名だけで持てるようにするため。 */
 function toHiragana(char: string): string {
-  const code = char.codePointAt(0);
-  if (code === undefined) return char;
+  const code = char.codePointAt(0) ?? -1;
   if (code < KATAKANA_START || code > KATAKANA_END) return char;
   return String.fromCodePoint(code - KANA_OFFSET);
 }
