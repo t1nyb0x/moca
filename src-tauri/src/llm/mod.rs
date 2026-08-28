@@ -7,6 +7,7 @@ pub mod anthropic;
 pub mod decode;
 pub mod error;
 pub mod gemini;
+pub mod http;
 pub mod openai;
 pub mod sse;
 pub mod stream;
