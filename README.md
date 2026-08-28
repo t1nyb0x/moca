@@ -46,6 +46,43 @@ WSL から実行する場合は次の形を用いる。
 cmd.exe /c "cd /d C:\dev\moca && npm run dev"
 ```
 
+`cargo` を呼ぶ場合は PATH を明示する。rustup が追加した PATH は新しい
+セッションからしか見えないため。
+
+```
+cmd.exe /c "set PATH=%USERPROFILE%\.cargo\bin;%PATH% && cd /d C:\dev\moca && cargo test"
+```
+
+### 環境構築でつまずいた点
+
+**ウイルス対策ソフトによる rustup の失敗。** ESET Security が LLVM のリンカ
+`ld.lld.exe` を検疫するため、`rustup default stable` が展開直後のファイルを
+見失いロールバックする。次のパスを除外設定に追加すること。Defender でも
+同種の誤検知が報告されている。
+
+```
+%USERPROFILE%\.rustup
+%USERPROFILE%\.cargo
+C:\dev\moca\src-tauri\target
+```
+
+3 つ目はビルド成果物。除外しないとリンクのたびにスキャンされ、ビルドが
+遅くなる。
+
+**Visual Studio の C++ ワークロード。** VS 2022 が入っていても、C++ による
+デスクトップ開発が未導入だと `link.exe` が無く `cargo build` が失敗する。
+GUI の Visual Studio Installer から追加するか、次のコマンドで部品だけを
+追加する（要管理者権限）。
+
+```
+vs_installer.exe modify ^
+  --installPath "C:\Program Files\Microsoft Visual Studio\2022\Community" ^
+  --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 ^
+  --passive --norestart
+```
+
+`--wait` を付けると終了コード 87（パラメータが不正）で失敗する。
+
 ## 前提
 
 - モデルファイルは同梱しない。利用者が自身で用意したファイルを読み込む
