@@ -23,3 +23,21 @@ serde_json = "1.0"
 # ADR-0011: ロギングは tracing。ファイル出力とローテーションは段 8 で追加する。
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# LLM 通信 (ADR-0002)。Windows では schannel より rustls のほうが依存が軽い。
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "stream",
+  "rustls-tls",
+  "http2",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-util = "0.7"
+futures-util = "0.3"
+bytes = "1"
+async-trait = "0.1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+wiremock = "0.6"
