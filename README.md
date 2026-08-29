@@ -118,6 +118,26 @@ INFO  moca: データディレクトリ path=...
 DEBUG moca::commands: 設定の読み出し
 ```
 
+### 音声で読み上げる
+
+合成器は別のアプリなので、先に起動しておく必要がある。
+
+| 合成器 | 既定の待ち受け先 | 準備 |
+|---|---|---|
+| VOICEVOX | `http://127.0.0.1:50021` | VOICEVOX 本体を起動する |
+| CeVIO AI | `http://127.0.0.1:3000` | CeVIO AI 本体と [shirataki](https://github.com/t1nyb0x/shirataki) を起動する |
+
+設定の「キャラクター」から合成器と待ち受け先を選び、「接続を確かめる」で
+話者を取り込む。shirataki は環境変数 `PORT` で待ち受け先を変えられるので、
+既定から変えている場合はここも合わせる。
+
+「感情の割り当てを作る」を押すと、話者が持つ感情成分の名前から既定の
+組み合わせを推測する。成分の顔ぶれはキャストごとに違うため、当たらない
+感情は声色を変えず抑揚と速さだけで差を出す。感情ごとの値は手で調整できる。
+
+合成器が起動していなければ、その旨が画面に出る。声が出ないだけで会話は
+続けられる。
+
 ### ログ
 
 不具合の調査にはログを使う。保存先はアプリの「診断」パネルに表示される。
@@ -152,6 +172,15 @@ C:\dev\moca\src-tauri\target
 
 3 つ目はビルド成果物。除外しないとリンクのたびにスキャンされ、ビルドが
 遅くなる。
+
+**WSL から `tauri build` を呼ぶ場合。** `cmd.exe` 経由では Tauri CLI が
+`cargo` を見つけられず `program not found` で止まる。WSL 側の環境が
+そのまま渡ることで `PATHEXT` が壊れ、`cargo` から `cargo.exe` を
+解決できなくなるため。PowerShell 経由なら通る。
+
+```
+powershell.exe -NoProfile -Command "cd C:\dev\moca; npm run tauri build"
+```
 
 **Visual Studio の C++ ワークロード。** VS 2022 が入っていても、C++ による
 デスクトップ開発が未導入だと `link.exe` が無く `cargo build` が失敗する。
