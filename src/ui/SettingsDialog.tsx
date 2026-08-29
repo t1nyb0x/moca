@@ -23,6 +23,18 @@ const DEFAULT_BASE_URL: Record<ProviderKind, string> = {
   gemini: "https://generativelanguage.googleapis.com",
 };
 
+/**
+ * OpenAI 互換のローカルサーバーと、その既定の待ち受け先。
+ *
+ * 既定値が Ollama 決め打ちのため、他を使う人はポートを自分で調べる必要が
+ * あった。`/v1` は送信時に付くので、ここはホストとポートまでを持つ。
+ */
+const LOCAL_SERVERS: readonly { readonly name: string; readonly baseUrl: string }[] = [
+  { name: "Ollama", baseUrl: "http://localhost:11434" },
+  { name: "LM Studio", baseUrl: "http://localhost:1234" },
+  { name: "llama.cpp", baseUrl: "http://localhost:8080" },
+];
+
 function emptyProvider(): ProviderProfileDto {
   return {
     id: crypto.randomUUID(),
@@ -242,6 +254,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   }
                 />
               </label>
+
+              {/*
+                既定値は Ollama のもの。他のローカルサーバーを使う人が
+                ポートを調べずに済むよう、候補から選べるようにする。
+              */}
+              {provider.kind === "openaiCompatible" && (
+                <div className="picker">
+                  <p className="picker__label">
+                    よく使う待ち受け先（押すと入ります）
+                  </p>
+                  <div className="picker__items">
+                    {LOCAL_SERVERS.map((server) => (
+                      <button
+                        key={server.baseUrl}
+                        type="button"
+                        aria-pressed={provider.baseUrl === server.baseUrl}
+                        className={
+                          provider.baseUrl === server.baseUrl
+                            ? "picker__item picker__item--on"
+                            : "picker__item"
+                        }
+                        onClick={() =>
+                          setProvider({ ...provider, baseUrl: server.baseUrl })
+                        }
+                      >
+                        {server.name}
+                        <small>{server.baseUrl}</small>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="form__note">
+                    ホストとポートまでを入れてください。<code>/v1</code> は送信時に
+                    付くため、書き足すと <code>/v1/v1/...</code> となって繋がりません。
+                  </p>
+                </div>
+              )}
               <label>
                 モデル
                 <input

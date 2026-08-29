@@ -739,6 +739,12 @@ textarea {
   margin-bottom: 0.35rem;
 }
 
+.picker__item small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
 .picker__item--on {
   border-color: var(--accent);
   background: var(--user-bubble);

@@ -120,6 +120,29 @@ INFO  moca: データディレクトリ path=...
 DEBUG moca::commands: 設定の読み出し
 ```
 
+### 接続先を設定する
+
+設定の「接続先を追加」から。種別と待ち受け先の対応は次のとおり。
+
+| 接続先 | 種別 | 接続先 URL |
+|---|---|---|
+| Ollama | OpenAI 互換 | `http://localhost:11434`（既定値） |
+| LM Studio | OpenAI 互換 | `http://localhost:1234` |
+| llama.cpp server | OpenAI 互換 | `http://localhost:8080` |
+| OpenAI | OpenAI 互換 | `https://api.openai.com` |
+| Anthropic | Anthropic | `https://api.anthropic.com` |
+| Google Gemini | Gemini | `https://generativelanguage.googleapis.com` |
+
+ローカルサーバーの 3 つは、設定画面の候補ボタンからも入れられる。
+
+**入れるのはホストとポートまで。** `/v1/chat/completions` などの経路は送信時
+に付く（`src-tauri/src/llm/http.rs` の `chat_url`）。`/v1` まで書くと
+`/v1/v1/chat/completions` になって繋がらない。末尾のスラッシュは吸収される。
+
+「接続を確かめる」を押すと `/v1/models` を叩いてモデル一覧を取り込む。取れた
+候補から選べば、モデル名を手で書かずに済む。LM Studio は Developer タブから
+サーバーを起動しておくこと。ポートを既定から変えている場合はそれに合わせる。
+
 ### 音声で読み上げる
 
 合成器は別のアプリなので、先に起動しておく必要がある。
