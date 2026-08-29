@@ -98,7 +98,7 @@ type ProviderProfile = {
   hasApiKey: boolean;           // 読み出し専用。キー本体は返さない
   temperature: number | null;
   topP: number | null;
-  maxTokens: number;
+  maxTokens: number | null;     // null は上限を指定しない (ADR-0013)
   emotionMode: "tag" | "off";   // emotion-protocol.md 6.4
   contextBudgetTokens: number | null;  // null なら既定値を用いる
 };
@@ -256,6 +256,21 @@ Channel には `text` と `usage` のみを流し、**エラーを Channel に�
 `chat_cancel(requestId)` は Rust 側の `CancellationToken` を発火させる。`chat_stream` は `stopReason: "cancelled"` で正常解決する。**中断はエラーではない。**
 
 `chat_cancel` は未知の `requestId` に対しても成功を返す（冪等）。既に完了した要求への中断要求が競合で届きうるため。
+
+#### 思考は本文ではない
+
+推論モデルは思考と本文を別のフィールドで返す（ADR-0013）。`reasoning` は
+会話へ保存せず、表情にもリップシンクにも渡さない。ただし捨てると何も
+表示されない時間が長く続くため、進行中であることを示す目的で流す。
+
+本文が 1 文字も出ないまま終わることがある。フロントはそのとき理由を
+表示すること。黙って何も起きないのが最も困る。
+
+#### 最大トークン数
+
+`maxTokens` が `null` のとき、OpenAI 互換と Gemini へはフィールドごと
+送らない。`null` を送ると弾く実装があるため。Anthropic は必須なので
+4096 を補う。
 
 #### システムプロンプトの構築
 
