@@ -31,3 +31,4 @@
 | [0012](0012-repository-layout.md) | リポジトリ構成を単一パッケージ + src-tauri とする | 採択 |
 | [0013](0013-reasoning-separate-from-body.md) | 推論モデルの思考を本文と分けて扱う | 採択 |
 | [0014](0014-emotion-synced-to-speech.md) | 感情の切り替えを発話の再生位置に同期させる | 採択 |
+| [0015](0015-pmx-via-third-party-loader.md) | PMX の読み込みに第三者ライブラリを用いる | 採択 |

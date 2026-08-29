@@ -26,6 +26,18 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.browser, ...globals.es2022 },
     },
+    rules: {
+      // 使わない引数は名前の頭に _ を付けて意図を示す。インターフェースを
+      // 満たすために受け取るが使わない、という場面がある。
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
   },
 
   // --- 開発用のスクリプトは Node で動く ---

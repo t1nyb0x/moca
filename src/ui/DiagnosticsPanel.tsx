@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { MorphMappingDialog } from "./MorphMappingDialog";
+
 import { useAppStore } from "@/app/store";
 import { logsDir } from "@/ipc";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
@@ -53,6 +55,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
 
+  const [mappingOpen, setMappingOpen] = useState(false);
   const [logPath, setLogPath] = useState<string | null>(null);
   useEffect(() => {
     void logsDir()
@@ -101,6 +104,16 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
             {diagnostics.expressionNames.length === 0 &&
               "（このモデルは表情を持ちません）"}
           </dd>
+
+          <dt>立ち姿</dt>
+          <dd>
+            {diagnostics.adjustedBones.length === 0
+              ? "元の姿勢のまま"
+              : `腕を下ろしました（${diagnostics.adjustedBones.join("、")}）`}
+          </dd>
+
+          <dt>ボーン</dt>
+          <dd>{diagnostics.boneNames.length} 本</dd>
 
           <dt>描画</dt>
           <dd>
@@ -204,6 +217,30 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
       <p className="diag__note">
         押すと顔が変わるか確かめられます。変われば経路は生きています。
       </p>
+
+      {diagnostics !== null && diagnostics.boneNames.length > 0 && (
+        <details className="diag__details">
+          <summary>ボーンの一覧</summary>
+          <p className="diag__groupNames">{diagnostics.boneNames.join("、")}</p>
+          <p className="diag__note">
+            立ち姿の調整は、腕のボーンが標準的な名前のときだけ働きます。
+          </p>
+        </details>
+      )}
+
+      {diagnostics?.emotionMorphs != null && (
+        <>
+          <p className="diag__note">
+            PMX はモーフ名がモデルごとに違うため、自動の推測が外れることが
+            あります。表情が変わらない感情があれば割り当てを直せます。
+          </p>
+          <button type="button" onClick={() => setMappingOpen(true)}>
+            表情の割り当てを直す
+          </button>
+        </>
+      )}
+
+      {mappingOpen && <MorphMappingDialog onClose={() => setMappingOpen(false)} />}
       <div className="diag__buttons">
         {CANONICAL_EMOTIONS.map((item) => {
           const supported = model === null || diagnostics === null || expressible.has(item);

@@ -39,21 +39,43 @@ export function ViewerHost(): React.JSX.Element {
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
-    const load = (path: string | null): void => {
+    const load = (handle: { path: string; format: "vrm" | "pmx" } | null): void => {
       setFailure(null);
       setWarning(null);
       void viewer
-        .setModel(path === null ? null : toAssetUrl(path))
+        .setModel(
+          handle === null
+            ? null
+            : {
+                url: toAssetUrl(handle.path),
+                path: handle.path,
+                format: handle.format,
+                toAssetUrl,
+              },
+        )
         .then((diagnostics) => {
           useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
 
-          // 覚えた位置があればそちらを優先する (要件 F-03-5)
           const current = useAppStore.getState();
-          const saved = current.characters.find(
+          const character = current.characters.find(
             (item) => item.id === current.activeCharacterId,
-          )?.cameraPreset;
-          if (saved != null) viewer.applyCameraState(saved);
+          );
+
+          // 覚えた位置があればそちらを優先する (要件 F-03-5)
+          if (character?.cameraPreset != null) {
+            viewer.applyCameraState(character.cameraPreset);
+          }
+
+          // 保存された割り当てがあれば反映する (PMX のみ)
+          if (character?.emotionMapping != null) {
+            const applied = viewer.setEmotionOverrides(
+              character.emotionMapping.entries,
+            );
+            if (applied !== null) {
+              useAppStore.getState().setModelDiagnostics(applied);
+            }
+          }
 
           // 描画がソフトウェアへ落ちていると実用に耐えない (要件 R-3)。
           // 落ちていること自体は何のエラーも出ないので知らせる。
@@ -79,12 +101,12 @@ export function ViewerHost(): React.JSX.Element {
         });
     };
 
-    if (state.model !== null) load(state.model.path);
+    if (state.model !== null) load(state.model);
 
     const unsubscribe = [
       store.subscribe(
         (current) => current.model,
-        (model) => load(model?.path ?? null),
+        (model) => load(model),
       ),
       // 会話中の感情は発話と一緒に渡し、口が到達した時点で反映させる
       store.subscribe(
@@ -110,6 +132,15 @@ export function ViewerHost(): React.JSX.Element {
             ?.idleSettings,
         (idle) => {
           if (idle !== undefined) viewer.setIdleSettings(idle);
+        },
+      ),
+      store.subscribe(
+        (current) =>
+          current.characters.find((item) => item.id === current.activeCharacterId)
+            ?.emotionMapping,
+        (mapping) => {
+          const applied = viewer.setEmotionOverrides(mapping?.entries ?? {});
+          if (applied !== null) useAppStore.getState().setModelDiagnostics(applied);
         },
       ),
     ];

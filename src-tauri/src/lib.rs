@@ -69,6 +69,7 @@ pub fn run() {
             commands::model::model_pick,
             commands::model::model_open,
             commands::api::logs_dir,
+            commands::api::log_client_error,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

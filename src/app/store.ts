@@ -4,6 +4,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
 import type { CameraState } from "@/ipc/generated/CameraState";
+import type { EmotionMapping } from "@/ipc/generated/EmotionMapping";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
@@ -93,6 +94,8 @@ export type AppState = {
   setBackgroundColor: (color: string | null) => Promise<void>;
   /** カメラ位置を選択中のキャラクターへ保存する (要件 F-03-5)。 */
   saveCameraState: (state: CameraState | null) => Promise<void>;
+  /** 感情ごとのモーフ割り当てを保存する (PMX 用、ADR-0004)。 */
+  saveEmotionMapping: (mapping: EmotionMapping | null) => Promise<void>;
   pickModel: () => Promise<void>;
   /** 読み込んで選択中のキャラクターへ保存する。投下や選択の受け口。 */
   adoptModel: (path: string) => Promise<void>;
@@ -257,6 +260,26 @@ export function createAppStore(): UseBoundStore<
       }
     },
 
+    saveEmotionMapping: async (mapping) => {
+      const current = get();
+      const character = current.characters.find(
+        (item) => item.id === current.activeCharacterId,
+      );
+      if (character === undefined) return;
+
+      const updated = { ...character, emotionMapping: mapping };
+      set({
+        characters: current.characters.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      });
+      try {
+        await ipc.characterUpsert(updated);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
     setIdleSettings: async (idle) => {
       const state = get();
       const character = state.characters.find(
@@ -365,7 +388,7 @@ export function createAppStore(): UseBoundStore<
         const saved = await ipc.characterUpsert({
           ...character,
           modelPath: path,
-          modelFormat: path === null ? null : "vrm",
+          modelFormat: path === null ? null : (get().model?.format ?? "vrm"),
         });
         set({
           characters: state.characters.map((item) =>

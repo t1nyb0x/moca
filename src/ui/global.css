@@ -516,6 +516,29 @@ textarea {
   gap: 0.4rem;
 }
 
+/* --- 画面が落ちたとき --- */
+
+.crash {
+  padding: 1.5rem;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.crash h1 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+
+.crash__detail {
+  padding: 0.7rem;
+  border: 1px solid var(--error-border);
+  border-radius: 8px;
+  background: var(--error-bg);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* --- ファイルの投下 --- */
 
 .drop {
@@ -534,6 +557,45 @@ textarea {
   border-radius: 12px;
   background: var(--surface);
   font-weight: 600;
+}
+
+/* --- 表情の割り当て --- */
+
+.mapping {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mapping__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mapping__head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.mapping__spacer {
+  flex: 1;
+}
+
+.mapping__row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.mapping__row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.mapping__row input {
+  width: 5rem;
 }
 
 /* --- 設定ダイアログ --- */
