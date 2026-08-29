@@ -16,8 +16,19 @@ import {
   type MorphTarget,
   type PmxMapping,
 } from "@/domain/model/pmx-mapping";
+import { armLoweringAngle } from "@/domain/model/rest-pose";
 import { resolveTexturePath } from "@/domain/model/texture-path";
 import type { ModelAdapter, ModelLoadContext } from "./ModelAdapter";
+
+/** 腕のボーン。MMD の標準的な命名。 */
+const ARM_BONES = { left: ["左腕"], right: ["右腕"] } as const;
+/** 腕の向きを測る先。手首が無ければひじで代用する。 */
+const ARM_TIP_BONES = {
+  left: ["左手首", "左ひじ"],
+  right: ["右手首", "右ひじ"],
+} as const;
+
+const DOWN = new THREE.Vector3(0, -1, 0);
 
 /** 呼吸を当てるボーン。MMD の標準的な命名。 */
 const CHEST_BONES = ["上半身2", "上半身"] as const;
@@ -65,6 +76,13 @@ export class PmxAdapter implements ModelAdapter {
   #physicsEnabled: boolean;
   #elapsedSeconds = 0;
 
+  /**
+   * 整えた立ち姿。tick がボーンを書き換えるので毎フレーム当て直す。
+   *
+   * 一度きりの変更では消される。呼吸と同じ扱い。
+   */
+  readonly #restPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[] = [];
+
   constructor(
     root: THREE.Group,
     meshes: THREE.SkinnedMesh[],
@@ -90,6 +108,55 @@ export class PmxAdapter implements ModelAdapter {
     this.#head = find(HEAD_BONES);
     this.#chestRestX = this.#chest?.rotation.x ?? 0;
     this.#spineRestX = this.#spine?.rotation.x ?? 0;
+
+    this.#relaxArm(bones, ARM_BONES.left, ARM_TIP_BONES.left);
+    this.#relaxArm(bones, ARM_BONES.right, ARM_TIP_BONES.right);
+  }
+
+  /**
+   * 腕を下ろして自然な立ち姿にする。
+   *
+   * ボーンの向きはモデルごとに違うので、回転軸を決め打ちしない。肩から
+   * 手へ向かう実際の方向を測り、そこから真下へ倒す軸を求める。
+   */
+  #relaxArm(
+    bones: readonly THREE.Bone[],
+    armNames: readonly string[],
+    tipNames: readonly string[],
+  ): void {
+    const find = (names: readonly string[]): THREE.Bone | null =>
+      names.map((name) => bones.find((bone) => bone.name === name)).find(Boolean) ?? null;
+
+    const arm = find(armNames);
+    if (arm === null) return;
+    const tip = find(tipNames) ?? arm;
+
+    this.#root.updateMatrixWorld(true);
+    const shoulder = arm.getWorldPosition(new THREE.Vector3());
+    const hand = tip.getWorldPosition(new THREE.Vector3());
+    const direction = hand.sub(shoulder);
+    if (direction.lengthSq() < 1e-8) return;
+    direction.normalize();
+
+    const angle = armLoweringAngle(direction.y);
+    if (angle <= 0) return;
+
+    // 腕を真下へ倒す回転軸。両者が平行なら回しようがない。
+    const axis = new THREE.Vector3().crossVectors(direction, DOWN);
+    if (axis.lengthSq() < 1e-8) return;
+    axis.normalize();
+
+    // 世界座標の軸を親の空間へ持ち込み、ボーン自身の回転より前に掛ける
+    const parentQuaternion = new THREE.Quaternion();
+    arm.parent?.getWorldQuaternion(parentQuaternion);
+    const localAxis = axis.applyQuaternion(parentQuaternion.invert()).normalize();
+
+    arm.quaternion.premultiply(
+      new THREE.Quaternion().setFromAxisAngle(localAxis, angle),
+    );
+    this.#root.updateMatrixWorld(true);
+
+    this.#restPose.push({ bone: arm, quaternion: arm.quaternion.clone() });
   }
 
   get object(): THREE.Object3D {
@@ -227,6 +294,10 @@ export class PmxAdapter implements ModelAdapter {
         this.#physicsEnabled = false;
         console.warn("MMD の物理演算を止めました", error);
       }
+    }
+
+    for (const { bone, quaternion } of this.#restPose) {
+      bone.quaternion.copy(quaternion);
     }
 
     this.#writeMorphs(this.#pendingMorphs);
