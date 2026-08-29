@@ -1,4 +1,4 @@
-import type { CanonicalEmotion } from "@/domain/emotion/types";
+import { NEUTRAL_CUE, type EmotionCue } from "@/domain/emotion/types";
 
 /**
  * 読み上げの単位を切り出す。
@@ -27,16 +27,22 @@ const MIN_LENGTH = 2;
 
 export type SpeechSegment = {
   readonly text: string;
-  readonly emotion: CanonicalEmotion;
+  /**
+   * この区間の表情。強さも持ち回る。
+   *
+   * 感情名だけにすると強さが失われ、`[happy:0.6]` がすべて最大強度に
+   * なる。モデルによっては最大強度で目が閉じるため、顔が壊れる。
+   */
+  readonly cue: EmotionCue;
 };
 
 export type SegmenterState = {
   readonly buffer: string;
-  readonly emotion: CanonicalEmotion;
+  readonly cue: EmotionCue;
 };
 
-export function createSegmenter(emotion: CanonicalEmotion = "neutral"): SegmenterState {
-  return { buffer: "", emotion };
+export function createSegmenter(cue: EmotionCue = NEUTRAL_CUE): SegmenterState {
+  return { buffer: "", cue };
 }
 
 export type SegmentResult = {
@@ -47,23 +53,26 @@ export type SegmentResult = {
 /**
  * 受信した差分を積み、切り出せた分を返す。
  *
- * @param emotion この差分の先頭から適用される感情。変わらないなら null。
+ * @param cue この差分の先頭から適用される感情と強さ。変わらないなら null。
  */
 export function pushSpeech(
   state: SegmenterState,
   text: string,
-  emotion: CanonicalEmotion | null = null,
+  cue: EmotionCue | null = null,
 ): SegmentResult {
   const segments: SpeechSegment[] = [];
   let buffer = state.buffer;
-  let current = state.emotion;
+  let current = state.cue;
 
-  if (emotion !== null && emotion !== current) {
+  const changed =
+    cue !== null &&
+    (cue.emotion !== current.emotion || cue.intensity !== current.intensity);
+  if (changed) {
     // 感情が変わる前の分は、変わる前の感情で読み上げる。
     const pending = buffer.trim();
-    if (pending !== "") segments.push({ text: pending, emotion: current });
+    if (pending !== "") segments.push({ text: pending, cue: current });
     buffer = "";
-    current = emotion;
+    current = cue;
   }
 
   for (const char of text) {
@@ -73,11 +82,11 @@ export function pushSpeech(
       buffer.length >= MAX_LENGTH;
     if (!done) continue;
     const ready = buffer.trim();
-    if (ready !== "") segments.push({ text: ready, emotion: current });
+    if (ready !== "") segments.push({ text: ready, cue: current });
     buffer = "";
   }
 
-  return { state: { buffer, emotion: current }, segments };
+  return { state: { buffer, cue: current }, segments };
 }
 
 /** 受信が終わったときに、残りを切り出す。 */
@@ -86,6 +95,6 @@ export function flushSpeech(state: SegmenterState): SegmentResult {
   if (ready === "") return { state: { ...state, buffer: "" }, segments: [] };
   return {
     state: { ...state, buffer: "" },
-    segments: [{ text: ready, emotion: state.emotion }],
+    segments: [{ text: ready, cue: state.cue }],
   };
 }

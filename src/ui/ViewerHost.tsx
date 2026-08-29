@@ -121,11 +121,7 @@ export function ViewerHost(): React.JSX.Element {
             viewer.endAudioSpeech();
             return;
           }
-          viewer.speakAudio(
-            audio.segment.text,
-            { emotion: audio.segment.emotion, intensity: 1 },
-            audio.playback.sample,
-          );
+          viewer.speakAudio(audio.segment.text, audio.segment.cue, audio.playback.sample);
         },
       ),
       // 手動の確認は即座に反映する

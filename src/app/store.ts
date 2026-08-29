@@ -606,11 +606,8 @@ export function createAppStore(): UseBoundStore<
 
             if (voiceCharacterId !== null) {
               // 文が閉じた時点で合成へ回す。返答の完成を待つと喋り始めが遅れる。
-              const pushed = pushSpeech(
-                segmenter,
-                update.appendedText,
-                update.emotion?.emotion ?? null,
-              );
+              // 強さも渡す。落とすと表情が常に最大になる。
+              const pushed = pushSpeech(segmenter, update.appendedText, update.emotion);
               segmenter = pushed.state;
               for (const segment of pushed.segments) {
                 speechQueue.enqueue(voiceCharacterId, segment);

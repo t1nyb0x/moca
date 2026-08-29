@@ -32,6 +32,11 @@ pub struct HttpSynthesizer {
     kind: TtsKind,
     base_url: String,
     client: reqwest::Client,
+    /// キャストごとの感情成分名。
+    ///
+    /// 合成のたびに問い合わせないための控え。キャストの成分は増減しない
+    /// ので、一度取れれば足りる。
+    axes_cache: tokio::sync::RwLock<std::collections::HashMap<String, Vec<String>>>,
 }
 
 impl std::fmt::Debug for HttpSynthesizer {
@@ -54,6 +59,7 @@ impl HttpSynthesizer {
             kind,
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             client,
+            axes_cache: tokio::sync::RwLock::default(),
         })
     }
 
@@ -180,8 +186,25 @@ impl HttpSynthesizer {
             .to_vec())
     }
 
+    /// キャストの感情成分。取れなければ空を返し、合成は続ける。
+    ///
+    /// ここで失敗しても声は出る。打ち消しが効かなくなるだけなので、
+    /// 合成そのものを止める理由にはならない。
+    async fn axes_of(&self, speaker: &str) -> Vec<String> {
+        if let Some(found) = self.axes_cache.read().await.get(speaker) {
+            return found.clone();
+        }
+        let axes = self.emotion_axes(speaker).await.unwrap_or_default();
+        self.axes_cache
+            .write()
+            .await
+            .insert(speaker.to_owned(), axes.clone());
+        axes
+    }
+
     async fn synthesize_shirataki(&self, request: &SynthesizeRequest) -> Result<Vec<u8>, TtsError> {
-        let body = shirataki::build_create_body(request);
+        let axes = self.axes_of(request.effective_speaker()).await;
+        let body = shirataki::build_create_body(request, &axes);
         let response = self
             .client
             .post(self.url("v1/voice/create"))
