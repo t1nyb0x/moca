@@ -89,6 +89,9 @@ export type AppState = {
   /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
   setIdleSettings: (idle: IdleSettings) => Promise<void>;
   pickModel: () => Promise<void>;
+  /** 読み込んで選択中のキャラクターへ保存する。投下や選択の受け口。 */
+  adoptModel: (path: string) => Promise<void>;
+  /** 読み込むだけ。復元に使う。 */
   openModel: (path: string) => Promise<void>;
   clearModel: () => Promise<void>;
   setShowViewer: (show: boolean) => Promise<void>;
@@ -134,6 +137,28 @@ function emptyResponseError(
       : "モデルが本文を返しませんでした。";
 
   return { kind: "invalid", message, retryAfterMs: null, status: null };
+}
+
+/**
+ * キャラクターが選ばれていなければ断る。
+ *
+ * モデルは選択中のキャラクターへ保存する。選ばれていないと、表示は
+ * されるのに保存先が無いという中途半端な状態になる。
+ */
+function requireCharacter(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+): boolean {
+  if (get().activeCharacterId !== null) return true;
+  set({
+    error: {
+      kind: "invalid",
+      message: "先にキャラクターを選んでください。モデルはキャラクターごとに保存されます。",
+      retryAfterMs: null,
+      status: null,
+    },
+  });
+  return false;
 }
 
 function userMessage(content: string): Message {
@@ -246,6 +271,7 @@ export function createAppStore(): UseBoundStore<
     },
 
     pickModel: async () => {
+      if (!requireCharacter(get, set)) return;
       try {
         const handle = await ipc.modelPick();
         if (handle === null) return;
@@ -253,6 +279,15 @@ export function createAppStore(): UseBoundStore<
         await get().persistModelPath(handle.path);
       } catch (error) {
         set({ error: error as CommandError });
+      }
+    },
+
+    adoptModel: async (path) => {
+      if (!requireCharacter(get, set)) return;
+      await get().openModel(path);
+      // 読めなかったときは保存しない。開けないパスを覚えても仕方がない。
+      if (get().model !== null) {
+        await get().persistModelPath(path);
       }
     },
 

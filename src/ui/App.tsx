@@ -6,6 +6,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { ConversationList } from "./ConversationList";
+import { useModelDrop } from "./useModelDrop";
 
 /**
  * アプリケーションの外枠。
@@ -29,6 +30,7 @@ export function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const dropping = useModelDrop();
 
   useEffect(() => {
     void bootstrap();
@@ -126,6 +128,12 @@ export function App(): React.JSX.Element {
       </main>
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+
+      {dropping && (
+        <div className="drop" aria-hidden="true">
+          <p className="drop__message">VRM ファイルをここに落としてください</p>
+        </div>
+      )}
     </div>
   );
 }

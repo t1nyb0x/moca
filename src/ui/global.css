@@ -466,6 +466,26 @@ textarea {
   gap: 0.4rem;
 }
 
+/* --- ファイルの投下 --- */
+
+.drop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.drop__message {
+  margin: 0;
+  padding: 1rem 1.6rem;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
 /* --- 設定ダイアログ --- */
 
 .dialog-backdrop {

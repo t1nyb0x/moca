@@ -251,6 +251,55 @@ describe("モデル", () => {
     expect(instance.getState().error?.kind).toBe("invalid");
   });
 
+  it("投下されたモデルを読み込んで保存する", async () => {
+    mocked.modelOpen.mockResolvedValue(handle);
+    const instance = store();
+
+    await instance.getState().adoptModel(handle.path);
+
+    expect(instance.getState().model).toEqual(handle);
+    expect(mocked.characterUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ modelPath: handle.path }),
+    );
+  });
+
+  it("読めなかったモデルのパスは保存しない", async () => {
+    // 開けないパスを覚えても仕方がない
+    mocked.modelOpen.mockRejectedValue({
+      kind: "invalid",
+      message: "対応していない形式です",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+
+    await instance.getState().adoptModel("C:\\bad.vrm");
+
+    expect(instance.getState().model).toBeNull();
+    expect(mocked.characterUpsert).not.toHaveBeenCalled();
+  });
+
+  it("キャラクター未選択なら投下を断る", async () => {
+    // 表示はされるのに保存先が無い、という中途半端な状態を作らない
+    const instance = store();
+    instance.setState({ activeCharacterId: null });
+
+    await instance.getState().adoptModel(handle.path);
+
+    expect(mocked.modelOpen).not.toHaveBeenCalled();
+    expect(instance.getState().error?.kind).toBe("invalid");
+  });
+
+  it("キャラクター未選択なら選択も断る", async () => {
+    const instance = store();
+    instance.setState({ activeCharacterId: null });
+
+    await instance.getState().pickModel();
+
+    expect(mocked.modelPick).not.toHaveBeenCalled();
+    expect(instance.getState().error?.kind).toBe("invalid");
+  });
+
   it("パスから開ける", async () => {
     mocked.modelOpen.mockResolvedValue(handle);
     const instance = store();
