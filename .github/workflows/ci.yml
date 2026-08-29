@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # 配布対象が Windows のみなので、検証も Windows で行う (ADR-0006)。
+    # Linux で通っても WebView2 の挙動は確かめられない。
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 依存の導入
+        run: npm ci
+
+      - name: 型チェック
+        run: npm run typecheck
+
+      - name: Lint（レイヤ境界の強制を含む）
+        run: npm run lint
+
+      - name: フロントエンドのテストとカバレッジ
+        run: npm run coverage
+
+      # tauri-build が設定を読むため、先にフロントエンドを作っておく
+      - name: フロントエンドのビルド
+        run: npm run build
+
+      - name: 書式
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      # keyring を実際に触るテストは既定で除外される (#[ignore])
+      - name: Rust のテスト
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      # cargo test が ts-rs の型を書き出す。差分が出るなら Rust 側の変更が
+      # TypeScript 側へ反映されていない (docs/ipc-contract.md 1.2)。
+      - name: IPC の型が最新か
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- src/ipc/generated; then
+            echo "::error::IPC の型が古いままです。src-tauri で cargo test を実行し、生成物をコミットしてください。"
+            exit 1
+          fi

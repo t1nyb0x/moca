@@ -1,0 +1,304 @@
+//! 永続化するデータの型。
+//!
+//! 仕様: docs/ipc-contract.md 第 2 章、docs/requirements.md 第 8 章
+//!
+//! ここに置くのは「ファイルへ書く形」であって、IPC 境界の DTO とは
+//! 一致しない。たとえば `ProviderProfile` に `hasApiKey` は持たせない。
+//! あれは資格情報ストアへ問い合わせて導く値であり、ファイルへ写しを
+//! 置くと実体と食い違う。DTO の組み立ては段 5 のコマンド層で行う。
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+use crate::llm::http::ProviderKind;
+
+/// スキーマの版。将来の移行に備えて全レコードが持つ。
+pub const SCHEMA_VERSION: u32 = 1;
+
+fn schema_version() -> u32 {
+    SCHEMA_VERSION
+}
+
+pub fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ModelFormat {
+    Vrm,
+    Pmx,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum EmotionMode {
+    /// 感情タグを注入し、解析する
+    Tag,
+    /// 注入しない。常に neutral で動く
+    Off,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Settings {
+    #[serde(default = "schema_version")]
+    pub schema_version: u32,
+    pub active_character_id: Option<String>,
+    pub log_level: String,
+    pub lip_sync_chars_per_second: f64,
+    pub show_viewer: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            active_character_id: None,
+            log_level: "info".to_owned(),
+            // 未決事項 U-5。実機で調整する。
+            lip_sync_chars_per_second: 10.0,
+            show_viewer: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ProviderProfile {
+    pub id: String,
+    pub name: String,
+    pub kind: ProviderKind,
+    pub base_url: String,
+    pub model: String,
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
+    /// `None` は上限を指定しない。既存の記録は数値のまま読める。
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    pub emotion_mode: EmotionMode,
+    pub context_budget_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CameraState {
+    pub position: [f64; 3],
+    pub target: [f64; 3],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct IdleSettings {
+    pub blink: bool,
+    pub saccade: bool,
+    pub look_at: bool,
+    pub breath: bool,
+    pub spring_bone: bool,
+}
+
+impl Default for IdleSettings {
+    fn default() -> Self {
+        Self {
+            blink: true,
+            saccade: true,
+            look_at: true,
+            breath: true,
+            spring_bone: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MorphTarget {
+    pub morph_name: String,
+    pub weight: f64,
+}
+
+/// 正規化感情からモーフへの割り当て。
+///
+/// VRM は恒等マッピングで足りるので通常は None。PMX はモーフ名に標準が
+/// 無いためモデルごとに必須になる (ADR-0004)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EmotionMapping {
+    pub format: ModelFormat,
+    pub model_id: Option<String>,
+    pub entries: HashMap<String, Vec<MorphTarget>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CharacterProfile {
+    pub id: String,
+    pub name: String,
+    /// None はモデル未設定 (要件 F-02)
+    pub model_path: Option<String>,
+    pub model_format: Option<ModelFormat>,
+    pub system_prompt: String,
+    pub provider_id: String,
+    pub camera_preset: Option<CameraState>,
+    #[serde(default)]
+    pub idle_settings: IdleSettings,
+    pub emotion_mapping: Option<EmotionMapping>,
+    #[serde(default = "schema_version")]
+    pub schema_version: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MessageRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EmotionSpan {
+    pub offset: u32,
+    pub emotion: String,
+    pub intensity: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Message {
+    pub role: MessageRole,
+    /// 感情タグを除去済みの本文。表示に使う。
+    pub content: String,
+    /// タグを含む原文。assistant のみ。再開時の表情復元に使う。
+    pub raw_content: Option<String>,
+    pub emotions: Option<Vec<EmotionSpan>>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Conversation {
+    pub id: String,
+    pub character_id: String,
+    pub title: String,
+    pub messages: Vec<Message>,
+    #[serde(default = "schema_version")]
+    pub schema_version: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 一覧表示用。全会話を読まずに済ませるために本体と分けて持つ。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConversationSummary {
+    pub id: String,
+    pub character_id: String,
+    pub title: String,
+    pub updated_at: String,
+    pub message_count: u32,
+}
+
+impl From<&Conversation> for ConversationSummary {
+    fn from(conversation: &Conversation) -> Self {
+        Self {
+            id: conversation.id.clone(),
+            character_id: conversation.character_id.clone(),
+            title: conversation.title.clone(),
+            updated_at: conversation.updated_at.clone(),
+            message_count: conversation.messages.len() as u32,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(non_snake_case)]
+    use super::*;
+
+    #[test]
+    fn 設定の既定値() {
+        let settings = Settings::default();
+        assert_eq!(settings.schema_version, SCHEMA_VERSION);
+        assert!(settings.show_viewer);
+        assert_eq!(settings.lip_sync_chars_per_second, 10.0);
+    }
+
+    #[test]
+    fn アイドル挙動は既定で全部有効() {
+        let idle = IdleSettings::default();
+        assert!(idle.blink && idle.saccade && idle.look_at && idle.breath && idle.spring_bone);
+    }
+
+    #[test]
+    fn フィールド名は_camelCase_で保存される() {
+        let json = serde_json::to_string(&Settings::default()).unwrap();
+        assert!(json.contains("\"activeCharacterId\""));
+        assert!(json.contains("\"lipSyncCharsPerSecond\""));
+        assert!(json.contains("\"schemaVersion\""));
+    }
+
+    #[test]
+    fn 版が無い古いレコードも読める() {
+        // 移行を楽にするため schemaVersion は既定値で補う
+        let json = r#"{"activeCharacterId":null,"logLevel":"info","lipSyncCharsPerSecond":10.0,"showViewer":true}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn 会話から一覧項目を導ける() {
+        let conversation = Conversation {
+            id: "c1".to_owned(),
+            character_id: "ch1".to_owned(),
+            title: "はじめての会話".to_owned(),
+            messages: vec![Message {
+                role: MessageRole::User,
+                content: "こんにちは".to_owned(),
+                raw_content: None,
+                emotions: None,
+                created_at: now_rfc3339(),
+            }],
+            schema_version: SCHEMA_VERSION,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        let summary = ConversationSummary::from(&conversation);
+        assert_eq!(summary.message_count, 1);
+        assert_eq!(summary.title, "はじめての会話");
+    }
+
+    #[test]
+    fn 感情の範囲を保存できる() {
+        let message = Message {
+            role: MessageRole::Assistant,
+            content: "ごきげんよう".to_owned(),
+            raw_content: Some("[happy]ごきげんよう".to_owned()),
+            emotions: Some(vec![EmotionSpan {
+                offset: 0,
+                emotion: "happy".to_owned(),
+                intensity: 1.0,
+            }]),
+            created_at: now_rfc3339(),
+        };
+        let json = serde_json::to_string(&message).unwrap();
+        let restored: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored, message);
+    }
+}

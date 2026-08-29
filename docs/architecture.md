@@ -4,7 +4,7 @@
 - 作成日: 2026-08-29
 - 状態: ドラフト
 
-要件定義書（`requirements.md`）の第 5 章および第 6 章を、実装に落とせる粒度まで具体化した文書。インターフェースのシグネチャは実装時に調整されうる指針であり、確定仕様ではない。
+要件定義書（`requirements.md`）の第 5 章を、実装に落とせる粒度まで具体化した文書。個々の設計判断の根拠は `adr/` を、IPC の具体的な型と制約は `ipc-contract.md` を参照する。インターフェースのシグネチャは実装時に調整されうる指針であり、確定仕様ではない。
 
 ---
 
@@ -186,10 +186,10 @@ type MorphTarget = { name: string; weight: number };
 type WeightMap = Readonly<Record<string, number>>;
 
 interface Controller<S> {
-  /** 副作用を持たない。同じ (state, t) には同じ結果を返す。 */
-  evaluate(state: S, elapsedSeconds: number): WeightMap;
-  /** 次フレームの状態。乱数は seed として state に含める。 */
+  /** 次フレームの状態。乱数生成器の状態は S に含めて決定的にする。 */
   advance(state: S, deltaSeconds: number): S;
+  /** 副作用を持たない射影。同じ state には同じ結果を返す。 */
+  evaluate(state: S): WeightMap;
 }
 ```
 
@@ -199,7 +199,7 @@ interface Controller<S> {
 |---|---|---|
 | `BlinkController` | `blink` | F-04-1 |
 | `SaccadeController` | `lookUp` / `lookDown` / `lookLeft` / `lookRight` | F-04-2 |
-| `BreathController` | 胸部・脊椎ボーンの回転（モーフではなくボーン変位） | F-04-4 |
+| `BreathController` | 胸部・脊椎ボーンの回転。これだけは `WeightMap` ではなく `BreathOutput` を返す | F-04-4 |
 | `ExpressionController` | `happy` / `angry` / `sad` / `relaxed` / `surprised` | F-07 |
 | `LipSyncController` | `aa` / `ih` / `ou` / `ee` / `oh` | F-08 |
 
@@ -315,9 +315,13 @@ P3 の透過マスコットウィンドウは Tauri のウィンドウ設定の�
 |---|---|---|
 | アプリ基盤 | Tauri v2 | capabilities による権限制御を利用する |
 | バックエンド | Rust / tokio / reqwest / serde | Anthropic は Rust 公式 SDK がないため raw HTTP |
+| ロギング | tracing / tracing-appender | 機密は `Secret` newtype で保護（ADR-0011） |
 | 機密情報 | keyring | Windows 資格情報マネージャー |
 | 設定永続化 | tauri-plugin-store | |
-| フロントエンド | TypeScript / Vite | フレームワークは未決（U-1） |
+| フロントエンド | React + TypeScript / Vite | 3D キャンバスは React の管理外（ADR-0007） |
+| 状態管理 | Zustand | フック外から読み書きできることが要件（ADR-0008） |
+| IPC ストリーミング | Tauri v2 `ipc::Channel` | 要求ごとに独立（ADR-0009） |
+| 型の同期 | ts-rs | Rust の DTO から TS 型を生成し二重管理を避ける |
 | 3D | three.js / @pixiv/three-vrm | PMX は P1 で MMDLoader + ammo.js |
 | テスト | cargo test / wiremock / Vitest / WebdriverIO + tauri-driver | |
 

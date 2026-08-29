@@ -1,0 +1,22 @@
+# Rust / Tauri
+/src-tauri/target/
+/src-tauri/gen/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# ログ・一時ファイル
+*.log
+.DS_Store
+Thumbs.db
+
+# 環境固有
+.env
+.env.local
+
+# エディタ
+.vscode/
+.idea/
+coverage/
