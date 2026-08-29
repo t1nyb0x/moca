@@ -173,13 +173,36 @@ C:\dev\moca\src-tauri\target
 3 つ目はビルド成果物。除外しないとリンクのたびにスキャンされ、ビルドが
 遅くなる。
 
-**WSL から `tauri build` を呼ぶ場合。** `cmd.exe` 経由では Tauri CLI が
-`cargo` を見つけられず `program not found` で止まる。WSL 側の環境が
-そのまま渡ることで `PATHEXT` が壊れ、`cargo` から `cargo.exe` を
-解決できなくなるため。PowerShell 経由なら通る。
+**WSL から `tauri build` を呼ぶ場合。** Tauri CLI が `cargo` を見つけられず
+`program not found` で止まることがある。WSL から起動した `powershell.exe` は
+Windows の環境変数を WSL を開いた時点のスナップショットで受け取るため、
+その後に入れた rustup の `%USERPROFILE%\.cargo\bin` が PATH に載らないため。
+`where.exe cargo` が空振りするかどうかで判別できる。PATH を補って呼ぶこと。
 
 ```
-powershell.exe -NoProfile -Command "cd C:\dev\moca; npm run tauri build"
+powershell.exe -NoProfile -Command 'cd C:\dev\moca; $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"; npm run tauri build'
+```
+
+外側をシングルクォートにするのは、WSL 側のシェルに `$env:` を展開させない
+ため。WSL を開き直してもスナップショットを取り直すので直る。
+
+**ビルド済みアプリを起動したままビルドしない。** `target\release\moca.exe` を
+実行中にビルドすると、リンクは通って `target\release\deps\moca.exe` まで
+できるが、それを `target\release` へ持ち上げる段で止まる。
+
+```
+error: failed to remove file `C:\dev\moca\src-tauri\target\release\moca.exe`
+
+Caused by:
+  アクセスが拒否されました。 (os error 5)
+```
+
+Windows は実行中の exe を削除できないため。バンドルまで進まないので
+`target\release\bundle\nsis` のインストーラも古いまま残り、`release` の
+成果物が更新されない。アプリを終了してからビルドし直すこと。
+
+```
+powershell.exe -NoProfile -Command 'Get-Process moca -ErrorAction SilentlyContinue | Stop-Process'
 ```
 
 **Visual Studio の C++ ワークロード。** VS 2022 が入っていても、C++ による
