@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "作成するタグ（例: v0.1.0）"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 依存の導入
+        run: npm ci
+
+      # リリース物が壊れていないことを最低限確かめる
+      - name: 型チェックとテスト
+        run: |
+          npm run typecheck
+          npm run test
+
+      # NSIS インストーラを作る。WebView2 のブートストラッパを同梱する
+      # 設定は tauri.conf.json 側にある (要件 4.1)。
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: moca ${{ github.event.inputs.tag || github.ref_name }}
+          releaseBody: |
+            変更点は [CHANGELOG.md](https://github.com/t1nyb0x/moca/blob/main/CHANGELOG.md) を参照してください。
+
+            ## 動作環境
+            - Windows 10 バージョン 1809 以降 / Windows 11 (x64)
+            - WebView2 Runtime（インストーラに同梱。Windows 11 には標準搭載）
+
+            ## 使うために必要なもの
+            - VRM モデル（同梱していません。お手持ちのファイルを読み込んでください）
+            - LLM の接続先（Ollama / LM Studio / llama.cpp / OpenAI / Anthropic / Gemini のいずれか）
+          releaseDraft: true
+          prerelease: true

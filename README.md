@@ -4,7 +4,8 @@ VRM / PMX 形式の 3D キャラクターモデルを表示し、そのキャラ
 
 Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外部 LLM API（Anthropic / OpenAI / Google Gemini）に対応する。
 
-現在は設計フェーズ。要件定義と主要な設計判断は確定済みで、実装は未着手。
+現在の版は 0.1.0。VRM の表示、LLM との会話、感情に応じた表情変化まで動作する。
+できること・できないことは [ロードマップ](docs/roadmap.md) を参照。
 
 ## 文書
 
@@ -16,6 +17,8 @@ Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外�
 | [docs/ipc-contract.md](docs/ipc-contract.md) | Rust コアと WebView フロントの IPC 契約。コマンド、DTO、エラー、呼び出し順序の制約 |
 | [docs/implementation-plan.md](docs/implementation-plan.md) | 実装順序。TDD の進め方と各段の完了条件 |
 | [docs/adr/](docs/adr/) | アーキテクチャ決定記録。決定ごとに 1 ファイル |
+| [docs/roadmap.md](docs/roadmap.md) | ロードマップ。各版で何ができるようになるか |
+| [CHANGELOG.md](CHANGELOG.md) | 変更履歴 |
 
 ## 段階リリース計画（概要）
 
