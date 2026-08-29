@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod llm;
+pub mod logging;
 pub mod prompt;
 pub mod secret;
 pub mod storage;
@@ -7,7 +8,6 @@ pub mod storage;
 use std::sync::Arc;
 
 use tauri::Manager;
-use tracing_subscriber::EnvFilter;
 
 use commands::state::AppState;
 use secret::store::KeyringStore;
@@ -16,39 +16,34 @@ use storage::store::FileStore;
 /// 資格情報マネージャー上のサービス名。
 const KEYRING_SERVICE: &str = "moca";
 
-/// ロギングの初期化。
-///
-/// ADR-0011 に従い `tracing` を用いる。ファイル出力・日次ローテーション・
-/// `Secret` newtype による機密保護は段 8 で追加する。現時点では開発時の
-/// 標準出力のみ。
-fn init_tracing() {
-    let default_directive = if cfg!(debug_assertions) {
-        "moca=debug,info"
-    } else {
-        "info"
-    };
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .init();
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_tracing();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            tracing::info!(target: "moca", path = %data_dir.display(), "データディレクトリ");
+            let store = FileStore::new(data_dir.clone());
+
+            // ログの水準は設定から取る。設定が壊れていても起動は妨げない。
+            let settings = store.load_settings().unwrap_or_default();
+
+            let log_dir = app.path().app_log_dir()?;
+            std::fs::create_dir_all(&log_dir)?;
+            if let Some(guard) = logging::init(&log_dir, &settings.log_level) {
+                // 書き込み待ちを持つので、アプリが生きているあいだ保持する
+                app.manage(guard);
+            }
+
+            tracing::info!(
+                target: "moca",
+                data = %data_dir.display(),
+                logs = %log_dir.display(),
+                "起動しました"
+            );
 
             app.manage(AppState::new(
-                FileStore::new(data_dir),
+                store,
                 Arc::new(KeyringStore::new(KEYRING_SERVICE)),
             ));
             Ok(())
@@ -73,6 +68,7 @@ pub fn run() {
             commands::api::chat_cancel,
             commands::model::model_pick,
             commands::model::model_open,
+            commands::api::logs_dir,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

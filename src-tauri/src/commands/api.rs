@@ -4,14 +4,14 @@
 //! 最小化する。契約は docs/ipc-contract.md 第 2 章。
 
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::mpsc;
 
 use crate::llm::types::{ChatResult, Delta, ModelInfo};
 use crate::storage::models::{CharacterProfile, Conversation, ConversationSummary, Settings};
 
 use super::dto::{ChatStreamRequest, ProviderHealth, ProviderProfileDto};
-use super::error::CommandError;
+use super::error::{CommandError, CommandErrorKind};
 use super::state::AppState;
 
 type Result<T> = std::result::Result<T, CommandError>;
@@ -109,6 +109,18 @@ pub fn conversation_save(state: State<'_, AppState>, conversation: Conversation)
 #[tauri::command]
 pub fn conversation_delete(state: State<'_, AppState>, id: String) -> Result<()> {
     state.conversation_delete(&id)
+}
+
+/// ログの保存先。不具合の報告に添えてもらうために表示する。
+#[tauri::command]
+pub fn logs_dir(app: AppHandle) -> Result<String> {
+    app.path()
+        .app_log_dir()
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| {
+            tracing::debug!(target: "moca::commands", ?error, "ログの場所を解決できない");
+            CommandError::new(CommandErrorKind::Io, "ログの保存先を特定できませんでした")
+        })
 }
 
 // --- チャット ---

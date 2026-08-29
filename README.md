@@ -118,6 +118,25 @@ INFO  moca: データディレクトリ path=...
 DEBUG moca::commands: 設定の読み出し
 ```
 
+### ログ
+
+不具合の調査にはログを使う。保存先はアプリの「診断」パネルに表示される。
+
+```
+%LOCALAPPDATA%\io.github.t1nyb0x.moca\logs\moca.YYYY-MM-DD.log
+```
+
+日次でローテーションし、7 日ぶんだけ残す。水準は設定の `logLevel`
+（`info` / `debug`）で変えられ、次回の起動から効く。環境変数 `RUST_LOG`
+があればそちらが優先されるので、設定を書き換えずに一時的に上げられる。
+
+```
+cmd.exe /c "set RUST_LOG=moca=debug,info && C:\dev\moca\src-tauri\target\debug\moca.exe"
+```
+
+API キーはログに出ない。`Secret` 型が `Debug` と `Display` を秘匿している
+ため、構造体ごと出力しても漏れない（ADR-0011）。
+
 ### 環境構築でつまずいた点
 
 **ウイルス対策ソフトによる rustup の失敗。** ESET Security が LLVM のリンカ

@@ -79,6 +79,9 @@ export const conversationSave = (conversation: Conversation): Promise<void> =>
 export const conversationDelete = (id: string): Promise<void> =>
   call("conversation_delete", { id });
 
+/** ログの保存先。不具合の報告に添えてもらうために表示する。 */
+export const logsDir = (): Promise<string> => call("logs_dir");
+
 /** ネイティブのファイルダイアログを開く。選ばなければ null。 */
 export const modelPick = (): Promise<ModelHandle | null> => call("model_pick");
 

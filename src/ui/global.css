@@ -451,6 +451,19 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.diag__path {
+  display: block;
+  margin: 0.2rem 0;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .diag__buttons {
   display: flex;
   flex-wrap: wrap;
