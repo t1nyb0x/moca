@@ -754,6 +754,29 @@ describe("send", () => {
     expect(secondCall?.history).toHaveLength(2);
   });
 
+  it("履歴の量は接続先の設定に従う", async () => {
+    respondWith(["はい"]);
+    const instance = store();
+    // 1 件ぶんも入らない予算にすると履歴は空になる
+    instance.setState({ providers: [{ ...provider, contextBudgetTokens: 1 }] });
+
+    await instance.getState().send("いちど目");
+    await instance.getState().send("にど目");
+
+    expect(mocked.chatStream.mock.calls[1]?.[0].history).toEqual([]);
+  });
+
+  it("設定が無ければ既定の予算を使う", async () => {
+    respondWith(["はい"]);
+    const instance = store();
+    instance.setState({ providers: [{ ...provider, contextBudgetTokens: null }] });
+
+    await instance.getState().send("いちど目");
+    await instance.getState().send("にど目");
+
+    expect(mocked.chatStream.mock.calls[1]?.[0].history).toHaveLength(2);
+  });
+
   it("失敗しても送った内容は残す", async () => {
     mocked.chatStream.mockRejectedValue({
       kind: "network",

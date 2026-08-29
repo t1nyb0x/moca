@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/ipc/generated/Message";
 import {
-  budgetFromContextLength,
   DEFAULT_BUDGET_TOKENS,
+  suggestBudget,
   trimHistory,
 } from "./context-window";
 
@@ -82,12 +82,13 @@ describe("trimHistory", () => {
   });
 });
 
-describe("budgetFromContextLength", () => {
-  it("文脈長の半分を履歴に充てる", () => {
-    expect(budgetFromContextLength(32_000)).toBe(16_000);
+describe("suggestBudget", () => {
+  it("文脈長の半分を提案する", () => {
+    // 残り半分は今回の入力と応答のために空けておく
+    expect(suggestBudget(32_000)).toBe(16_000);
   });
 
   it.each([null, 0, -1])("不明な場合 (%o) は既定値", (value) => {
-    expect(budgetFromContextLength(value)).toBe(DEFAULT_BUDGET_TOKENS);
+    expect(suggestBudget(value)).toBe(DEFAULT_BUDGET_TOKENS);
   });
 });

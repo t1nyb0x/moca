@@ -16,7 +16,7 @@ import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 import type { StopReason } from "@/ipc/generated/StopReason";
 
-import { budgetFromContextLength, DEFAULT_MAX_TURNS, trimHistory } from "./context-window";
+import { DEFAULT_BUDGET_TOKENS, DEFAULT_MAX_TURNS, trimHistory } from "./context-window";
 import { ResponseAssembler } from "./response-assembler";
 
 export type ChatStatus = "idle" | "streaming";
@@ -483,16 +483,15 @@ export function createAppStore(): UseBoundStore<
         updatedAt: nowIso(),
       };
 
+      // contextBudgetTokens は「履歴に使ってよいトークン数」そのもの。
+      // 以前は文脈長として扱って半分に割っていたが、名前と食い違っていた。
+      const character = state.characters.find((item) => item.id === characterId);
+      const provider = state.providers.find(
+        (item) => item.id === character?.providerId,
+      );
       const history = trimHistory(base.messages, {
         maxTurns: DEFAULT_MAX_TURNS,
-        budgetTokens: budgetFromContextLength(
-          state.providers.find((provider) =>
-            state.characters.some(
-              (character) =>
-                character.id === characterId && character.providerId === provider.id,
-            ),
-          )?.contextBudgetTokens ?? null,
-        ),
+        budgetTokens: provider?.contextBudgetTokens ?? DEFAULT_BUDGET_TOKENS,
       });
 
       const withUser: Conversation = {

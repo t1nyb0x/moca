@@ -4,6 +4,7 @@ import { useAppStore } from "@/app/store";
 import { logsDir } from "@/ipc";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
 import { groupByRole, ROLES, type ExpressionRole } from "@/domain/model/expression-roles";
+import { isSoftwareRenderer } from "@/domain/model/renderer";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 const ROLE_LABELS: Record<ExpressionRole, string> = {
@@ -102,7 +103,11 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
           </dd>
 
           <dt>描画</dt>
-          <dd>{diagnostics.rendererName}</dd>
+          <dd>
+            {diagnostics.rendererName}
+            {isSoftwareRenderer(diagnostics.rendererName) &&
+              "（GPU が使われていません）"}
+          </dd>
         </dl>
       )}
 
