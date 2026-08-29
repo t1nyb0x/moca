@@ -14,6 +14,7 @@ import { Viewer } from "@/render/Viewer";
 export function ViewerHost(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const container = hostRef.current;
@@ -32,25 +33,33 @@ export function ViewerHost(): React.JSX.Element {
     viewer.setLipSyncRate(state.settings?.lipSyncCharsPerSecond ?? 10);
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
-    if (state.model !== null) {
-      void viewer.setModel(toAssetUrl(state.model.path)).catch((error: unknown) => {
-        setFailure(error instanceof Error ? error.message : "モデルを読み込めませんでした");
-      });
-    }
+    /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
+    const load = (path: string | null): void => {
+      setFailure(null);
+      setWarning(null);
+      void viewer
+        .setModel(path === null ? null : toAssetUrl(path))
+        .then((diagnostics) => {
+          if (diagnostics === null) return;
+          if (diagnostics.textureCount === 0) {
+            setWarning(
+              "テクスチャを読み込めませんでした。モデルが白く表示されます。",
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          setFailure(
+            error instanceof Error ? error.message : "モデルを読み込めませんでした",
+          );
+        });
+    };
+
+    if (state.model !== null) load(state.model.path);
 
     const unsubscribe = [
       store.subscribe(
         (current) => current.model,
-        (model) => {
-          setFailure(null);
-          void viewer
-            .setModel(model === null ? null : toAssetUrl(model.path))
-            .catch((error: unknown) => {
-              setFailure(
-                error instanceof Error ? error.message : "モデルを読み込めませんでした",
-              );
-            });
-        },
+        (model) => load(model?.path ?? null),
       ),
       store.subscribe(
         (current) => current.emotion,
@@ -78,6 +87,11 @@ export function ViewerHost(): React.JSX.Element {
       {failure !== null && (
         <p className="viewer__failure" role="alert">
           {failure}
+        </p>
+      )}
+      {failure === null && warning !== null && (
+        <p className="viewer__failure" role="status">
+          {warning}
         </p>
       )}
     </div>

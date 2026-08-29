@@ -83,8 +83,33 @@ const WRITABLE_KEYS: readonly string[] = [
   "lookRight",
 ];
 
+/**
+ * 基本色テクスチャが貼られている材質の数を数える。
+ *
+ * 0 枚なら、モデルにテクスチャが無いか、読み込みに失敗している。
+ * 埋め込みテクスチャは blob URL を作って fetch で読むため、CSP の
+ * connect-src に blob: が無いと静かに失敗し、真っ白なモデルになる。
+ * 二度と黙って起きないよう数を持ち回る。
+ */
+function countTexturedMaterials(root: THREE.Object3D): number {
+  let count = 0;
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.material === undefined || mesh.material === null) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if ("map" in material && material.map !== null && material.map !== undefined) {
+        count += 1;
+      }
+    }
+  });
+  return count;
+}
+
 export class VrmAdapter implements ModelAdapter {
   readonly format = "vrm" as const;
+  /** 基本色テクスチャを持つ材質の数。0 は読み込み失敗の疑い。 */
+  readonly textureCount: number;
 
   readonly #vrm: VRM;
   readonly #available: Set<string>;
@@ -95,6 +120,7 @@ export class VrmAdapter implements ModelAdapter {
 
   constructor(vrm: VRM) {
     this.#vrm = vrm;
+    this.textureCount = countTexturedMaterials(vrm.scene);
     this.#available = new Set(
       vrm.expressionManager?.expressions.map(
         (expression) => expression.expressionName,

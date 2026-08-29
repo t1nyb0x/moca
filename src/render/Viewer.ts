@@ -44,6 +44,13 @@ import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
 
+export type ModelDiagnostics = {
+  readonly textureCount: number;
+  readonly availableMorphs: number;
+  /** VRM 0.x には surprised が無い (docs/emotion-protocol.md 4.2)。 */
+  readonly canExpressSurprised: boolean;
+};
+
 const DEFAULT_IDLE: IdleSettings = {
   blink: true,
   saccade: true,
@@ -164,15 +171,22 @@ export class Viewer {
     return gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string;
   }
 
-  async setModel(url: string | null): Promise<void> {
+  /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
+  async setModel(url: string | null): Promise<ModelDiagnostics | null> {
     this.#clearModel();
-    if (url === null) return;
+    if (url === null) return null;
 
     const adapter = await loadVrm(url);
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
     this.setFraming("upper");
+
+    return {
+      textureCount: adapter.textureCount,
+      availableMorphs: adapter.availableMorphs().length,
+      canExpressSurprised: adapter.canExpress("surprised"),
+    };
   }
 
   setEmotion(emotion: CanonicalEmotion, intensity = 1): void {

@@ -15,6 +15,8 @@ export interface ModelAdapter {
   readonly format: ModelFormatName;
   /** シーンへ追加する対象。 */
   readonly object: THREE.Object3D;
+  /** 基本色テクスチャを持つ材質の数。0 は読み込み失敗の疑い。 */
+  readonly textureCount: number;
 
   /** モデルが持つ表情・モーフの名称。マッピングの解決に使う。 */
   availableMorphs(): readonly string[];
