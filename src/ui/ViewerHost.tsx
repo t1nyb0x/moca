@@ -39,11 +39,11 @@ export function ViewerHost(): React.JSX.Element {
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
-    const load = (path: string | null): void => {
+    const load = (handle: { path: string; format: "vrm" | "pmx" } | null): void => {
       setFailure(null);
       setWarning(null);
       void viewer
-        .setModel(path === null ? null : toAssetUrl(path))
+        .setModel(handle === null ? null : toAssetUrl(handle.path), handle?.format ?? "vrm")
         .then((diagnostics) => {
           useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
@@ -79,12 +79,12 @@ export function ViewerHost(): React.JSX.Element {
         });
     };
 
-    if (state.model !== null) load(state.model.path);
+    if (state.model !== null) load(state.model);
 
     const unsubscribe = [
       store.subscribe(
         (current) => current.model,
-        (model) => load(model?.path ?? null),
+        (model) => load(model),
       ),
       // 会話中の感情は発話と一緒に渡し、口が到達した時点で反映させる
       store.subscribe(

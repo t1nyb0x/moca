@@ -19,6 +19,7 @@
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",
     "@tauri-apps/api": "^2.11.1",
+    "@yohawing/three-mmd-loader": "^0.8.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1",

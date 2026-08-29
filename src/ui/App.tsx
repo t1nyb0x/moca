@@ -31,6 +31,7 @@ export function App(): React.JSX.Element {
   const [diagOpen, setDiagOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const dropping = useModelDrop();
+  const [licenseAcknowledged, setLicenseAcknowledged] = useState(false);
 
   useEffect(() => {
     void bootstrap();
@@ -112,6 +113,24 @@ export function App(): React.JSX.Element {
           設定
         </button>
       </header>
+
+      {/*
+        要件 4.4: MMD 向けモデルは再配布・改変・利用目的に制限を課す規約を
+        持つものが多い。読み込んだ時点で確認を促す。
+      */}
+      {model?.format === "pmx" && !licenseAcknowledged && (
+        <p className="banner banner--notice" role="status">
+          <span className="banner__body">
+            MMD 向けのモデルは、再配布や改変、利用目的に制限を設けているものが
+            多くあります。配布元の規約をご確認のうえお使いください。
+          </span>
+          <span className="banner__actions">
+            <button type="button" onClick={() => setLicenseAcknowledged(true)}>
+              確認しました
+            </button>
+          </span>
+        </p>
+      )}
 
       {model?.oversized === true && (
         <p className="banner banner--notice" role="status">

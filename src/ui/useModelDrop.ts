@@ -3,8 +3,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { useAppStore } from "@/app/store";
 
-/** 受け付ける拡張子。PMX は Rust 側で断るが、投下の時点でも拾わない。 */
-const ACCEPTED = /\.vrm$/i;
+/** 受け付ける拡張子。検証は Rust 側が行う。 */
+const ACCEPTED = /\.(vrm|pmx)$/i;
 
 /**
  * ウィンドウへのファイル投下でモデルを読み込む (要件 F-01-2)。

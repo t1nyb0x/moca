@@ -365,7 +365,7 @@ export function createAppStore(): UseBoundStore<
         const saved = await ipc.characterUpsert({
           ...character,
           modelPath: path,
-          modelFormat: path === null ? null : "vrm",
+          modelFormat: path === null ? null : (get().model?.format ?? "vrm"),
         });
         set({
           characters: state.characters.map((item) =>

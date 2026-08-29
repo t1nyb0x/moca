@@ -41,7 +41,8 @@ import type { CameraState } from "@/ipc/generated/CameraState";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 import { MorphApplier } from "./MorphApplier";
-import type { ModelAdapter } from "./ModelAdapter";
+import type { ModelAdapter, ModelFormatName } from "./ModelAdapter";
+import { loadPmx } from "./PmxAdapter";
 import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
@@ -179,11 +180,14 @@ export class Viewer {
   }
 
   /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
-  async setModel(url: string | null): Promise<ModelDiagnostics | null> {
+  async setModel(
+    url: string | null,
+    format: ModelFormatName = "vrm",
+  ): Promise<ModelDiagnostics | null> {
     this.#clearModel();
     if (url === null) return null;
 
-    const adapter = await loadVrm(url);
+    const adapter = format === "pmx" ? await loadPmx(url) : await loadVrm(url);
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
