@@ -233,7 +233,7 @@ describe("モデル", () => {
 describe("診断", () => {
   const diagnostics = {
     textureCount: 12,
-    expressionCount: 18,
+    expressionNames: ["neutral", "happy", "sad", "aa", "blink"],
     expressibleEmotions: ["neutral", "happy", "sad"] as const,
     rendererName: "ANGLE (NVIDIA)",
   };

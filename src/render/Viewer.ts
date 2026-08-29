@@ -178,7 +178,7 @@ export class Viewer {
 
     return {
       textureCount: adapter.textureCount,
-      expressionCount: adapter.availableMorphs().length,
+      expressionNames: adapter.availableMorphs(),
       expressibleEmotions: adapter.expressibleEmotions(),
       rendererName: this.rendererInfo(),
     };

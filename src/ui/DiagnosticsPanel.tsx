@@ -1,5 +1,14 @@
 import { useAppStore } from "@/app/store";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
+import { groupByRole, ROLES, type ExpressionRole } from "@/domain/model/expression-roles";
+
+const ROLE_LABELS: Record<ExpressionRole, string> = {
+  emotion: "感情（タグで指定）",
+  viseme: "口形（リップシンクが使用）",
+  blink: "まばたき（自動）",
+  lookAt: "視線（自動）",
+  custom: "モデル固有（現在は未使用）",
+};
 
 const EMOTION_LABELS: Record<string, string> = {
   neutral: "平常",
@@ -25,8 +34,16 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const diagnostics = useAppStore((state) => state.modelDiagnostics);
   const emotion = useAppStore((state) => state.emotion);
   const previewEmotion = useAppStore((state) => state.previewEmotion);
+  const characters = useAppStore((state) => state.characters);
+  const providers = useAppStore((state) => state.providers);
+  const activeCharacterId = useAppStore((state) => state.activeCharacterId);
 
   const expressible = new Set(diagnostics?.expressibleEmotions ?? []);
+  const grouped = groupByRole(diagnostics?.expressionNames ?? []);
+
+  const character = characters.find((item) => item.id === activeCharacterId);
+  const provider = providers.find((item) => item.id === character?.providerId);
+  const tagsEnabled = provider?.emotionMode === "tag";
 
   return (
     <aside className="diag">
@@ -51,14 +68,47 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
 
           <dt>表情の総数</dt>
           <dd>
-            {diagnostics.expressionCount} 個
-            {diagnostics.expressionCount === 0 && "（このモデルは表情を持ちません）"}
+            {diagnostics.expressionNames.length} 個
+            {diagnostics.expressionNames.length === 0 &&
+              "（このモデルは表情を持ちません）"}
           </dd>
 
           <dt>描画</dt>
           <dd>{diagnostics.rendererName}</dd>
         </dl>
       )}
+
+      {diagnostics !== null && diagnostics.expressionNames.length > 0 && (
+        <details className="diag__details">
+          <summary>表情の内訳</summary>
+          {ROLES.map((role) => {
+            const names = grouped.get(role) ?? [];
+            if (names.length === 0) return null;
+            return (
+              <div key={role} className="diag__group">
+                <p className="diag__groupLabel">
+                  {ROLE_LABELS[role]}: {names.length} 個
+                </p>
+                <p className="diag__groupNames">{names.join("、")}</p>
+              </div>
+            );
+          })}
+          <p className="diag__note">
+            感情として選べるのは VRM が標準化した 5 種と平常だけです。口形・
+            まばたき・視線はそれぞれの仕組みが自動で動かしています。
+          </p>
+        </details>
+      )}
+
+      <p
+        className={tagsEnabled ? "diag__note" : "diag__note diag__note--warn"}
+        role={tagsEnabled ? undefined : "alert"}
+      >
+        感情タグの送信:{" "}
+        <strong>{tagsEnabled ? "有効" : "無効"}</strong>
+        {!tagsEnabled &&
+          "。無効のあいだはモデルにタグの説明を送らないため、会話で表情は変わりません。設定の接続先で「感情表現」を有効にしてください。"}
+      </p>
 
       <p className="diag__note">
         現在の感情: <strong>{EMOTION_LABELS[emotion.emotion] ?? emotion.emotion}</strong>

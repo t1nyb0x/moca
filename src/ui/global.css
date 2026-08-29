@@ -283,6 +283,39 @@ textarea {
   color: var(--text-muted);
 }
 
+.diag__note--warn {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--error-border);
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--text);
+}
+
+.diag__details {
+  margin-top: 0.7rem;
+}
+
+.diag__details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.diag__group {
+  margin-top: 0.5rem;
+}
+
+.diag__groupLabel {
+  margin: 0;
+  font-weight: 600;
+}
+
+.diag__groupNames {
+  margin: 0.1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
 .diag__buttons {
   display: flex;
   flex-wrap: wrap;
