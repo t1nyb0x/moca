@@ -1,5 +1,9 @@
 import * as THREE from "three";
-import { ThreeMmdLoader, disposeMmdModel } from "@yohawing/three-mmd-loader";
+import {
+  ThreeMmdLoader,
+  disposeMmdModel,
+  type MmdRuntime,
+} from "@yohawing/three-mmd-loader";
 
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import type { Viseme } from "@/domain/lipsync/viseme";
@@ -26,6 +30,9 @@ const HEAD_BONES = ["頭", "首"] as const;
  * VRM と違い、PMX には表情の標準が無い。モーフ名は日本語でモデルごとに
  * 異なるため、`PmxMapping` で正規化感情から実際のモーフ名へ橋渡しする。
  *
+ * 揺れ物はランタイムの stateful-spring で動かす。Bullet の WASM を積まずに
+ * 済むため軽い。
+ *
  * 視線追従には対応しない。PMX に LookAt の仕組みが無く、目のボーンを
  * 直接動かす必要があるため。まばたきと表情、口形は動く。
  */
@@ -43,17 +50,34 @@ export class PmxAdapter implements ModelAdapter {
   readonly #chestRestX: number;
   readonly #spineRestX: number;
   readonly #dispose: () => void;
+  readonly #runtime: MmdRuntime | null;
+
+  /**
+   * 表情と呼吸は tick のあとに当てる。
+   *
+   * ランタイムはボーンとモーフを書き換えるので、先に当てると毎フレーム
+   * 消される。値を持ち回り、tick の直後に書き込む。
+   */
+  #pendingMorphs: ReadonlyMap<string, number> = new Map();
+  #pendingChestPitch = 0;
+  #pendingSpinePitch = 0;
+  /** 物理演算に失敗したら諦める。描画ごと止めるより無いほうがまし。 */
+  #physicsEnabled: boolean;
+  #elapsedSeconds = 0;
 
   constructor(
     root: THREE.Group,
     meshes: THREE.SkinnedMesh[],
     textureCount: number,
     dispose: () => void,
+    runtime: MmdRuntime | null,
   ) {
     this.#root = root;
     this.#meshes = meshes;
     this.textureCount = textureCount;
     this.#dispose = dispose;
+    this.#runtime = runtime;
+    this.#physicsEnabled = runtime !== null;
     this.#defaultMapping = resolveDefaultMapping(this.availableMorphs());
     this.#mapping = this.#defaultMapping;
 
@@ -146,7 +170,8 @@ export class PmxAdapter implements ModelAdapter {
       if (weight > 0) put(this.#mapping.blink, weight);
     }
 
-    this.#writeMorphs(resolved);
+    // 書き込みは tick のあと (update) で行う
+    this.#pendingMorphs = resolved;
   }
 
   /** 管理しているモーフを毎回すべて書く。書き残しがあると値が焼き付く。 */
@@ -177,18 +202,41 @@ export class PmxAdapter implements ModelAdapter {
   }
 
   applyBreath(chestPitchRadians: number, spinePitchRadians: number): void {
-    if (this.#chest !== null) {
-      this.#chest.rotation.x = this.#chestRestX + chestPitchRadians;
-    }
-    if (this.#spine !== null && this.#spine !== this.#chest) {
-      this.#spine.rotation.x = this.#spineRestX + spinePitchRadians;
-    }
+    this.#pendingChestPitch = chestPitchRadians;
+    this.#pendingSpinePitch = spinePitchRadians;
   }
 
-  update(_deltaSeconds: number): void {
-    // 物理演算と IK は未対応。髪やスカートは揺れない。
-    // 動かすにはランタイムの tick が要るが、姿勢だけを与える経路が
-    // 現状では見当たらないため後回しにする。
+  /**
+   * 揺れ物を進め、そのあとに表情と呼吸を当てる。
+   *
+   * 順序が要点。ランタイムはボーンとモーフを書き換えるので、先に当てると
+   * 毎フレーム消される。
+   */
+  update(deltaSeconds: number): void {
+    this.#elapsedSeconds += deltaSeconds;
+
+    if (this.#physicsEnabled && this.#runtime !== null) {
+      try {
+        this.#runtime.tick(this.#elapsedSeconds, {
+          mesh: this.#meshes[0] ?? this.#root,
+          physics: true,
+          ik: true,
+        });
+      } catch (error) {
+        // 揺れ物が動かないだけなら見た目が固いで済む。描画ごと止めない。
+        this.#physicsEnabled = false;
+        console.warn("MMD の物理演算を止めました", error);
+      }
+    }
+
+    this.#writeMorphs(this.#pendingMorphs);
+
+    if (this.#chest !== null) {
+      this.#chest.rotation.x = this.#chestRestX + this.#pendingChestPitch;
+    }
+    if (this.#spine !== null && this.#spine !== this.#chest) {
+      this.#spine.rotation.x = this.#spineRestX + this.#pendingSpinePitch;
+    }
   }
 
   setLookAtTarget(_target: THREE.Object3D | null): void {
@@ -236,6 +284,8 @@ function countTexturedMaterials(root: THREE.Object3D): number {
  */
 export async function loadPmx(context: ModelLoadContext): Promise<PmxAdapter> {
   const loader = new ThreeMmdLoader({
+    // Bullet の WASM を積まずに揺れ物を動かせる
+    runtime: { physics: "stateful-spring" },
     textureResolver: {
       resolve: async (texturePath) => {
         const absolute = resolveTexturePath(context.path, texturePath);
@@ -263,5 +313,6 @@ export async function loadPmx(context: ModelLoadContext): Promise<PmxAdapter> {
     meshes,
     countTexturedMaterials(model.root),
     () => disposeMmdModel(model),
+    model.runtime,
   );
 }
