@@ -23,10 +23,10 @@ describe("composeWeights", () => {
 
   it("複数の入力を重ねる", () => {
     const result = compose({
-      expression: { happy: 0.8 },
+      expression: { sad: 0.8 },
       idle: [{ blink: 1 }, { lookLeft: 0.2 }],
     });
-    expect(result).toEqual({ happy: 0.8, blink: 1, lookLeft: 0.2 });
+    expect(result).toEqual({ sad: 0.8, blink: 1, lookLeft: 0.2 });
   });
 
   it("同じキーは最大値を採る", () => {
@@ -89,9 +89,37 @@ describe("composeWeights", () => {
 
     it("群の外側は正規化の影響を受けない", () => {
       const result = compose({
+        expression: { angry: 1, sad: 1 },
+        idle: [{ blink: 1 }],
+      });
+      expect(result.blink).toBe(1);
+    });
+  });
+
+  describe("喜びのあいだのまばたき", () => {
+    it("happy が満ちていればまばたきを止める", () => {
+      const result = compose({ expression: { happy: 1 }, idle: [{ blink: 1 }] });
+      expect(result.blink).toBeUndefined();
+      expect(result.happy).toBe(1);
+    });
+
+    it("happy の重みぶんだけ薄める", () => {
+      // 途中で happy が立っても目が飛び出して見えないよう、段階的に消す
+      const result = compose({ expression: { happy: 0.4 }, idle: [{ blink: 1 }] });
+      expect(result.blink).toBeCloseTo(0.6, 6);
+    });
+
+    it("正規化したあとの重みで判断する", () => {
+      // happy と sad が競れば happy は 0.5 まで落ちる。見えている強さで薄める
+      const result = compose({
         expression: { happy: 1, sad: 1 },
         idle: [{ blink: 1 }],
       });
+      expect(result.blink).toBeCloseTo(0.5, 6);
+    });
+
+    it("ほかの感情はまばたきに触らない", () => {
+      const result = compose({ expression: { sad: 1 }, idle: [{ blink: 1 }] });
       expect(result.blink).toBe(1);
     });
   });
