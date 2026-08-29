@@ -1,7 +1,15 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
+import type { Playback } from "@/audio/player";
+import {
+  createSegmenter,
+  flushSpeech,
+  pushSpeech,
+  type SpeechSegment,
+} from "@/domain/voice/segment";
 import * as ipc from "@/ipc";
+import { SpeechQueue } from "./speech";
 import type { CommandError } from "@/ipc/errors";
 import type { CameraState } from "@/ipc/generated/CameraState";
 import type { EmotionMapping } from "@/ipc/generated/EmotionMapping";
@@ -35,6 +43,18 @@ export type SpeechChunk = {
   readonly emotion: EmotionCue | null;
 };
 
+/**
+ * 再生中の読み上げ音声。
+ *
+ * 音声があるときは、文字数から口を推測せずに実際の波形へ合わせる。
+ * null は「今は鳴っていない」。
+ */
+export type SpeechAudio = {
+  readonly seq: number;
+  readonly segment: SpeechSegment;
+  readonly playback: Playback;
+};
+
 /** 手動で感情を確かめるための指示。発話とは独立に即座に反映される。 */
 export type EmotionPreview = {
   readonly seq: number;
@@ -65,6 +85,7 @@ export type AppState = {
   /** 直近に受け取った感情。診断の表示に使う。 */
   emotion: EmotionCue;
   speech: SpeechChunk;
+  speechAudio: SpeechAudio | null;
   preview: EmotionPreview;
 
   /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
@@ -180,6 +201,16 @@ function userMessage(content: string): Message {
 }
 
 /**
+ * 読み上げの失敗を、会話の失敗と区別できる形にそろえる。
+ *
+ * 黙って声が出ないのが一番困る。原因が分かる言葉にして表に出す。
+ */
+function toVoiceError(error: unknown): CommandError {
+  const base = ipc.toCommandError(error);
+  return { ...base, message: `読み上げに失敗しました: ${base.message}` };
+}
+
+/**
  * `subscribeWithSelector` を挟むのは、3D ビューが特定の値だけを購読する
  * ため (ADR-0007)。素の subscribe は状態全体の変化しか通知しない。
  */
@@ -198,7 +229,25 @@ export function createAppStore(): UseBoundStore<
     };
   }
 > {
-  return create<AppState>()(subscribeWithSelector((set, get) => ({
+  const speechQueue = new SpeechQueue();
+
+  return create<AppState>()(subscribeWithSelector((set, get) => {
+    speechQueue.onSegment = (segment, playback) => {
+      set((current) => ({
+        speechAudio: { seq: (current.speechAudio?.seq ?? 0) + 1, segment, playback },
+      }));
+    };
+    speechQueue.onIdle = () => set({ speechAudio: null });
+    speechQueue.onError = (error) => {
+      // 声が出なくても会話は続けられる。既に出ている失敗を覆い隠さない。
+      set((current) =>
+        current.error === null
+          ? { error: toVoiceError(error) }
+          : {},
+      );
+    };
+
+    return {
     settings: null,
     providers: [],
     characters: [],
@@ -213,6 +262,7 @@ export function createAppStore(): UseBoundStore<
     error: null,
     emotion: NEUTRAL,
     speech: { seq: 0, text: "", emotion: null },
+    speechAudio: null,
     preview: { seq: 0, emotion: "neutral" },
     model: null,
     modelDiagnostics: null,
@@ -525,6 +575,12 @@ export function createAppStore(): UseBoundStore<
       const requestId = newId();
       const assembler = new ResponseAssembler();
 
+      // 声を出す設定なら、口は音声に合わせる。文字数からの推測はしない。
+      const voiceCharacterId =
+        character?.voiceSettings?.enabled === true ? characterId : null;
+      let segmenter = createSegmenter();
+      speechQueue.cancel();
+
       set({
         conversation: withUser,
         status: "streaming",
@@ -547,13 +603,26 @@ export function createAppStore(): UseBoundStore<
             }
             if (delta.kind !== "text") return;
             const update = assembler.push(delta.value);
+
+            if (voiceCharacterId !== null) {
+              // 文が閉じた時点で合成へ回す。返答の完成を待つと喋り始めが遅れる。
+              // 強さも渡す。落とすと表情が常に最大になる。
+              const pushed = pushSpeech(segmenter, update.appendedText, update.emotion);
+              segmenter = pushed.state;
+              for (const segment of pushed.segments) {
+                speechQueue.enqueue(voiceCharacterId, segment);
+              }
+            }
+
             set((current) => ({
               streamingText: assembler.display,
               emotion: update.emotion ?? current.emotion,
               // 感情は口が該当位置へ到達した時点で反映されるよう、
-              // テキストと一緒に送る。
+              // テキストと一緒に送る。音声があるならそちらが口を動かすので
+              // 疑似リップシンクへは渡さない。
               speech:
-                update.appendedText === "" && update.emotion === null
+                voiceCharacterId !== null ||
+                (update.appendedText === "" && update.emotion === null)
                   ? current.speech
                   : {
                       seq: current.speech.seq + 1,
@@ -565,6 +634,15 @@ export function createAppStore(): UseBoundStore<
         );
 
         assembler.finish();
+
+        if (voiceCharacterId !== null) {
+          // 句点で終わらない返答の、最後の一文を取りこぼさない。
+          const rest = flushSpeech(segmenter);
+          segmenter = rest.state;
+          for (const segment of rest.segments) {
+            speechQueue.enqueue(voiceCharacterId, segment);
+          }
+        }
 
         // 中断でも受け取れた分は残す。ユーザーの目に見えていたものを消さない。
         const messages =
@@ -609,6 +687,8 @@ export function createAppStore(): UseBoundStore<
     cancel: async () => {
       const requestId = get().requestId;
       if (requestId === null) return;
+      // 中断したのに声だけ喋り続けることがないように、先に止める。
+      speechQueue.cancel();
       try {
         await ipc.chatCancel(requestId);
       } catch {
@@ -639,7 +719,8 @@ export function createAppStore(): UseBoundStore<
 
       await get().send(input);
     },
-  })));
+    };
+  }));
 }
 
 export const useAppStore = createAppStore();

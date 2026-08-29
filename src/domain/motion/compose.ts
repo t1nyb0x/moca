@@ -30,6 +30,21 @@ function mergeMax(target: Record<string, number>, source: WeightMap): void {
   }
 }
 
+/**
+ * 暫定対応: happy のあいだはまばたきを薄める。
+ *
+ * happy の表情は目もとを細める形を含むことが多く、そこへ blink を重ねると
+ * 笑顔のまま目だけが開閉して落ち着かない。恒久策は表情側の目もとと blink を
+ * 別の系統として扱うことだが、それまでは happy の重みぶんだけ blink を消す。
+ * 一気に切らず段階的に薄めるのは、まばたきの途中で happy が立ったときに
+ * まぶたが飛んで見えないようにするため。
+ */
+function suppressBlink(target: Record<string, number>, happy: number): void {
+  const value = target["blink"];
+  if (value === undefined) return;
+  target["blink"] = value * (1 - clamp01(happy));
+}
+
 /** 群の合計が 1 を超えていたら、その群だけを比率を保って縮める。 */
 function normalizeGroup(target: Record<string, number>, keys: readonly string[]): void {
   let total = 0;
@@ -49,6 +64,7 @@ function normalizeGroup(target: Record<string, number>, keys: readonly string[])
  * 1. キーごとに最大値を採る
  * 2. 発話中は感情由来の口形を抑え、リップシンクを優先する
  * 3. 群の合計が 1 を超えたら正規化する
+ * 4. happy のあいだはまばたきを薄める（暫定）
  *
  * three.js には触れない。ここが純粋であることで、表情が破綻する条件を
  * 単体テストで押さえられる。
@@ -71,6 +87,9 @@ export function composeWeights(input: ComposeInput): WeightMap {
 
   normalizeGroup(result, EMOTION_KEYS);
   normalizeGroup(result, VISEME_KEYS);
+
+  // 正規化のあとに置く。実際に画面へ出る happy の強さで判断したいため。
+  suppressBlink(result, result["happy"] ?? 0);
 
   for (const [key, value] of Object.entries(result)) {
     const clamped = clamp01(value);

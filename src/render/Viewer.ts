@@ -38,6 +38,13 @@ import {
   type LipSyncConfig,
   type LipSyncState,
 } from "@/domain/lipsync/controller";
+import {
+  advanceAudioLipSync,
+  createAudioLipSyncState,
+  evaluateAudioLipSync,
+  type AudioLipSyncState,
+  type AudioSample,
+} from "@/domain/lipsync/audio";
 import type { CameraState } from "@/ipc/generated/CameraState";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
@@ -93,6 +100,14 @@ export class Viewer {
   #breath: BreathState;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
+  #audioLipSync: AudioLipSyncState = createAudioLipSyncState();
+  /**
+   * 再生中の音声から今の位置と音量を測る手段。
+   *
+   * これがあるあいだは文字数まかせの疑似リップシンクを使わない。
+   * 実際に鳴っている音に合わせるほうが常に正確なため。
+   */
+  #audioSampler: (() => AudioSample) | null = null;
   /**
    * まだ発話が追いついていない感情の切り替え。
    *
@@ -243,6 +258,34 @@ export class Viewer {
     this.#lipSync = feedLipSync(this.#lipSync, text);
   }
 
+  /**
+   * 読み上げ音声に合わせて口を動かす。
+   *
+   * 合成に渡したのと同じ文を渡すこと。音声と文は対応しているので、
+   * 再生位置から口形が決まる。感情はこの音声の先頭に対応するため、
+   * 待たずにここで切り替える。
+   */
+  speakAudio(text: string, emotion: EmotionCue | null, sample: () => AudioSample): void {
+    // 疑似リップシンクの積み残しを持ち込まない。二重に口が動いてしまう。
+    this.#lipSync = createLipSyncState();
+    this.#emotionMarkers = [];
+    this.#audioLipSync = createAudioLipSyncState(text);
+    this.#audioSampler = sample;
+    if (emotion !== null) {
+      this.#expression = setExpressionTarget(
+        this.#expression,
+        emotion.emotion,
+        emotion.intensity,
+      );
+    }
+  }
+
+  /** 再生が終わった、または止められた。口を閉じて通常の駆動へ戻す。 */
+  endAudioSpeech(): void {
+    this.#audioSampler = null;
+    this.#audioLipSync = createAudioLipSyncState();
+  }
+
   setIdleSettings(idle: IdleSettings): void {
     this.#idle = idle;
     this.#adapter?.setLookAtTarget(idle.lookAt ? this.#lookAtTarget : null);
@@ -359,8 +402,13 @@ export class Viewer {
 
   #step(delta: number): void {
     this.#expression = advanceExpression(this.#expression, delta);
-    this.#lipSync = advanceLipSync(this.#lipSync, delta, this.#lipSyncConfig);
-    this.#fireDueEmotions();
+    const sampler = this.#audioSampler;
+    if (sampler === null) {
+      this.#lipSync = advanceLipSync(this.#lipSync, delta, this.#lipSyncConfig);
+      this.#fireDueEmotions();
+    } else {
+      this.#audioLipSync = advanceAudioLipSync(this.#audioLipSync, delta, sampler());
+    }
     if (this.#idle.blink) this.#blink = advanceBlink(this.#blink, delta);
     if (this.#idle.breath) this.#breath = advanceBreath(this.#breath, delta);
     if (this.#idle.saccade) {
@@ -379,7 +427,10 @@ export class Viewer {
         adapter,
         {
           expression: evaluateExpression(this.#expression),
-          lipSync: evaluateLipSync(this.#lipSync),
+          lipSync:
+            this.#audioSampler === null
+              ? evaluateLipSync(this.#lipSync)
+              : evaluateAudioLipSync(this.#audioLipSync),
           idle: this.#idle.blink ? [evaluateBlink(this.#blink)] : [],
         },
         this.#idle.breath

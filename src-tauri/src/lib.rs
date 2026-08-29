@@ -4,6 +4,7 @@ pub mod logging;
 pub mod prompt;
 pub mod secret;
 pub mod storage;
+pub mod tts;
 
 use std::sync::Arc;
 
@@ -70,6 +71,9 @@ pub fn run() {
             commands::model::model_open,
             commands::api::logs_dir,
             commands::api::log_client_error,
+            commands::api::tts_speakers,
+            commands::api::tts_emotion_axes,
+            commands::api::tts_synthesize,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

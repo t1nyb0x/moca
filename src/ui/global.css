@@ -731,3 +731,65 @@ textarea {
   color: var(--text-muted);
   font-size: 0.85em;
 }
+
+/* --- 声の設定 --- */
+
+.form__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form__fieldset legend {
+  padding: 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+/* 入れ子の枠が二重に見えないよう、外枠と余白を持たせない */
+.form--nested {
+  margin-top: 0.4rem;
+  padding: 0;
+  border: 0;
+}
+
+.form .form__check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.form__group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}
+
+.form__group[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form__group summary {
+  cursor: pointer;
+  font-size: 0.92em;
+}
+
+/* 値を右端に揃え、つまみを動かしても幅が動かないようにする */
+.form .form__range {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form .form__range input {
+  flex: 1;
+}
+
+.form .form__range span {
+  min-width: 2.6rem;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

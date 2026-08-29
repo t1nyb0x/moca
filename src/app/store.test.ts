@@ -20,6 +20,8 @@ vi.mock("@/ipc", () => ({
   modelOpen: vi.fn(),
   conversationsIndex: vi.fn(),
   conversationDelete: vi.fn(),
+  ttsSynthesize: vi.fn(),
+  toCommandError: (error: unknown) => error,
 }));
 
 import * as ipc from "@/ipc";
@@ -66,6 +68,7 @@ const character: CharacterProfile = {
     springBone: true,
   },
   emotionMapping: null,
+  voiceSettings: null,
   schemaVersion: 1,
   createdAt: "2026-08-29T00:00:00Z",
   updatedAt: "2026-08-29T00:00:00Z",

@@ -4,7 +4,9 @@ VRM / PMX 形式の 3D キャラクターモデルを表示し、そのキャラ
 
 Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外部 LLM API（Anthropic / OpenAI / Google Gemini）に対応する。
 
-現在の版は 0.2.0。VRM の表示、LLM との会話、感情に応じた表情変化まで動作する。
+現在の版は 0.4.0。VRM / PMX の表示、LLM との会話、感情に応じた表情変化、
+音声での読み上げと音声駆動リップシンクまで動作する。PMX は表示だけの
+実験的対応と位置づけている。
 できること・できないことは [ロードマップ](docs/roadmap.md) を参照。
 
 ## 文書
@@ -118,6 +120,26 @@ INFO  moca: データディレクトリ path=...
 DEBUG moca::commands: 設定の読み出し
 ```
 
+### 音声で読み上げる
+
+合成器は別のアプリなので、先に起動しておく必要がある。
+
+| 合成器 | 既定の待ち受け先 | 準備 |
+|---|---|---|
+| VOICEVOX | `http://127.0.0.1:50021` | VOICEVOX 本体を起動する |
+| CeVIO AI | `http://127.0.0.1:3000` | CeVIO AI 本体と [shirataki](https://github.com/t1nyb0x/shirataki) を起動する |
+
+設定の「キャラクター」から合成器と待ち受け先を選び、「接続を確かめる」で
+話者を取り込む。shirataki は環境変数 `PORT` で待ち受け先を変えられるので、
+既定から変えている場合はここも合わせる。
+
+「感情の割り当てを作る」を押すと、話者が持つ感情成分の名前から既定の
+組み合わせを推測する。成分の顔ぶれはキャストごとに違うため、当たらない
+感情は声色を変えず抑揚と速さだけで差を出す。感情ごとの値は手で調整できる。
+
+合成器が起動していなければ、その旨が画面に出る。声が出ないだけで会話は
+続けられる。
+
 ### ログ
 
 不具合の調査にはログを使う。保存先はアプリの「診断」パネルに表示される。
@@ -152,6 +174,38 @@ C:\dev\moca\src-tauri\target
 
 3 つ目はビルド成果物。除外しないとリンクのたびにスキャンされ、ビルドが
 遅くなる。
+
+**WSL から `tauri build` を呼ぶ場合。** Tauri CLI が `cargo` を見つけられず
+`program not found` で止まることがある。WSL から起動した `powershell.exe` は
+Windows の環境変数を WSL を開いた時点のスナップショットで受け取るため、
+その後に入れた rustup の `%USERPROFILE%\.cargo\bin` が PATH に載らないため。
+`where.exe cargo` が空振りするかどうかで判別できる。PATH を補って呼ぶこと。
+
+```
+powershell.exe -NoProfile -Command 'cd C:\dev\moca; $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"; npm run tauri build'
+```
+
+外側をシングルクォートにするのは、WSL 側のシェルに `$env:` を展開させない
+ため。WSL を開き直してもスナップショットを取り直すので直る。
+
+**ビルド済みアプリを起動したままビルドしない。** `target\release\moca.exe` を
+実行中にビルドすると、リンクは通って `target\release\deps\moca.exe` まで
+できるが、それを `target\release` へ持ち上げる段で止まる。
+
+```
+error: failed to remove file `C:\dev\moca\src-tauri\target\release\moca.exe`
+
+Caused by:
+  アクセスが拒否されました。 (os error 5)
+```
+
+Windows は実行中の exe を削除できないため。バンドルまで進まないので
+`target\release\bundle\nsis` のインストーラも古いまま残り、`release` の
+成果物が更新されない。アプリを終了してからビルドし直すこと。
+
+```
+powershell.exe -NoProfile -Command 'Get-Process moca -ErrorAction SilentlyContinue | Stop-Process'
+```
 
 **Visual Studio の C++ ワークロード。** VS 2022 が入っていても、C++ による
 デスクトップ開発が未導入だと `link.exe` が無く `cargo build` が失敗する。

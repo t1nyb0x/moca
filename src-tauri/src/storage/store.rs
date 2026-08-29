@@ -297,6 +297,7 @@ mod tests {
             camera_preset: None,
             idle_settings: IdleSettings::default(),
             emotion_mapping: None,
+            voice_settings: None,
             schema_version: SCHEMA_VERSION,
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),

@@ -19,6 +19,8 @@ use crate::storage::models::{
     CharacterProfile, Conversation, ConversationSummary, MessageRole, ProviderProfile, Settings,
 };
 use crate::storage::store::FileStore;
+use crate::tts::http::{HttpSynthesizer, SpeechSynthesizer};
+use crate::tts::types::{SpeakerInfo, SynthesizeRequest, TtsKind};
 
 use super::dto::{ChatStreamRequest, ProviderHealth, ProviderProfileDto};
 use super::error::CommandError;
@@ -198,6 +200,66 @@ impl AppState {
         Ok(self.store.delete_conversation(id)?)
     }
 
+    // --- 音声合成 ---
+
+    fn synthesizer(kind: TtsKind, base_url: &str) -> Result<HttpSynthesizer> {
+        Ok(HttpSynthesizer::new(kind, base_url)?)
+    }
+
+    pub async fn tts_speakers(&self, kind: TtsKind, base_url: &str) -> Result<Vec<SpeakerInfo>> {
+        Ok(Self::synthesizer(kind, base_url)?.speakers().await?)
+    }
+
+    pub async fn tts_emotion_axes(
+        &self,
+        kind: TtsKind,
+        base_url: &str,
+        speaker: &str,
+    ) -> Result<Vec<String>> {
+        Ok(Self::synthesizer(kind, base_url)?
+            .emotion_axes(speaker)
+            .await?)
+    }
+
+    /// 選択中のキャラクターの設定で合成する。
+    ///
+    /// 感情から声の作り方への割り当ては設定に持たせてあるので、呼び出し側は
+    /// 正規化感情の名前だけを渡せばよい。
+    pub async fn tts_synthesize(
+        &self,
+        character_id: &str,
+        text: &str,
+        emotion: &str,
+    ) -> Result<Vec<u8>> {
+        if text.trim().is_empty() {
+            return Err(CommandError::invalid("読み上げる本文がありません"));
+        }
+
+        let character = self.character_get(character_id)?;
+        let settings = character
+            .voice_settings
+            .ok_or_else(|| CommandError::invalid("このキャラクターに音声が設定されていません"))?;
+
+        if !settings.enabled {
+            return Err(CommandError::invalid("音声が無効になっています"));
+        }
+
+        let preset = settings
+            .emotion_presets
+            .get(emotion)
+            .cloned()
+            .unwrap_or_default();
+
+        let synthesizer = Self::synthesizer(settings.kind, &settings.base_url)?;
+        Ok(synthesizer
+            .synthesize(SynthesizeRequest {
+                text: text.to_owned(),
+                speaker: settings.speaker,
+                preset,
+            })
+            .await?)
+    }
+
     // --- チャット ---
 
     /// 中断は冪等。すでに終わった要求への中断も成功とする。
@@ -328,6 +390,7 @@ mod tests {
             camera_preset: None,
             idle_settings: IdleSettings::default(),
             emotion_mapping: None,
+            voice_settings: None,
             schema_version: SCHEMA_VERSION,
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),
