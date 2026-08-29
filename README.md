@@ -30,6 +30,27 @@ Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外�
 | P3 | 透過デスクトップマスコット |
 | P4 | 長期記憶、function calling、複数キャラクター、macOS / Linux |
 
+## ブランチ運用
+
+配布するアプリなので、**`main` にあるものが利用者の入れられるもの**と一致するようにする。
+
+| ブランチ | 意味 |
+|---|---|
+| `main` | 最新のリリース。ここにタグを打つ |
+| `develop` | 次のリリースへ向けた作業の集積先 |
+| `feature/*`, `fix/*`, `docs/*` | 個々の作業。`develop` へ取り込む |
+
+リリースの手順:
+
+1. `develop` の内容が出せる状態になったら `main` へ取り込む
+2. `CHANGELOG.md` と各所の版番号（`package.json` / `src-tauri/Cargo.toml` /
+   `src-tauri/tauri.conf.json`）を更新する
+3. `main` に `vX.Y.Z` のタグを打つ
+4. Release ワークフローがインストーラを作り、下書きのプレリリースとして
+   公開する。内容を確認して公開する
+
+CI は `main` と `develop` への push、およびすべての PR で回る。
+
 ## 開発環境
 
 **Rust と Node.js は Windows 側に統一する**（[ADR-0006](docs/adr/0006-windows-native-toolchain.md)）。
