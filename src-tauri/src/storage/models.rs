@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::llm::http::ProviderKind;
+use crate::tts::types::{TtsKind, VoicePreset};
 
 /// スキーマの版。将来の移行に備えて全レコードが持つ。
 pub const SCHEMA_VERSION: u32 = 1;
@@ -145,6 +146,25 @@ pub struct EmotionMapping {
     pub entries: HashMap<String, Vec<MorphTarget>>,
 }
 
+/// 音声合成の設定 (要件 P2)。
+///
+/// 感情ごとの声の作り方は、正規化感情から接続先固有の値への割り当てとして
+/// 持つ。VOICEVOX はスタイルの差し替え、CeVIO は成分の数値になるが、
+/// `VoicePreset` が両方を表せる (docs/emotion-protocol.md 第 5 章)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VoiceSettings {
+    pub enabled: bool,
+    pub kind: TtsKind,
+    pub base_url: String,
+    /// 既定の話者。VOICEVOX はスタイル id、CeVIO はキャスト名。
+    pub speaker: String,
+    /// 正規化感情ごとの声の作り方。
+    #[serde(default)]
+    pub emotion_presets: std::collections::BTreeMap<String, VoicePreset>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -160,6 +180,9 @@ pub struct CharacterProfile {
     #[serde(default)]
     pub idle_settings: IdleSettings,
     pub emotion_mapping: Option<EmotionMapping>,
+    /// 後から足した項目なので default が要る。無いと既存の記録が読めなくなる。
+    #[serde(default)]
+    pub voice_settings: Option<VoiceSettings>,
     #[serde(default = "schema_version")]
     pub schema_version: u32,
     pub created_at: String,
@@ -277,6 +300,17 @@ mod tests {
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.background_color, None);
         assert_eq!(settings.active_character_id.as_deref(), Some("ch1"));
+    }
+
+    #[test]
+    fn 音声設定が無い古い記録も読める() {
+        // 0.4 より前に保存されたキャラクターを想定する
+        let json = r#"{"id":"ch1","name":"千奈","modelPath":null,"modelFormat":null,
+            "systemPrompt":"","providerId":"p1","cameraPreset":null,
+            "emotionMapping":null,"createdAt":"t","updatedAt":"t"}"#;
+        let profile: CharacterProfile = serde_json::from_str(json).unwrap();
+        assert!(profile.voice_settings.is_none());
+        assert!(profile.idle_settings.blink);
     }
 
     #[test]

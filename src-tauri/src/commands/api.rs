@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::llm::types::{ChatResult, Delta, ModelInfo};
 use crate::storage::models::{CharacterProfile, Conversation, ConversationSummary, Settings};
+use crate::tts::types::{SpeakerInfo, TtsKind};
 
 use super::dto::{ChatStreamRequest, ProviderHealth, ProviderProfileDto};
 use super::error::{CommandError, CommandErrorKind};
@@ -134,6 +135,42 @@ pub fn logs_dir(app: AppHandle) -> Result<String> {
             tracing::debug!(target: "moca::commands", ?error, "ログの場所を解決できない");
             CommandError::new(CommandErrorKind::Io, "ログの保存先を特定できませんでした")
         })
+}
+
+// --- 音声合成 ---
+
+#[tauri::command]
+pub async fn tts_speakers(
+    state: State<'_, AppState>,
+    kind: TtsKind,
+    base_url: String,
+) -> Result<Vec<SpeakerInfo>> {
+    state.tts_speakers(kind, &base_url).await
+}
+
+#[tauri::command]
+pub async fn tts_emotion_axes(
+    state: State<'_, AppState>,
+    kind: TtsKind,
+    base_url: String,
+    speaker: String,
+) -> Result<Vec<String>> {
+    state.tts_emotion_axes(kind, &base_url, &speaker).await
+}
+
+/// 合成した WAV を生のバイト列で返す。
+///
+/// 音声は数百 KB になる。JSON の数値配列で運ぶと数倍に膨れるので、
+/// 生の応答を使う。
+#[tauri::command]
+pub async fn tts_synthesize(
+    state: State<'_, AppState>,
+    character_id: String,
+    text: String,
+    emotion: String,
+) -> Result<tauri::ipc::Response> {
+    let audio = state.tts_synthesize(&character_id, &text, &emotion).await?;
+    Ok(tauri::ipc::Response::new(audio))
 }
 
 // --- チャット ---

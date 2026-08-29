@@ -9,6 +9,7 @@ use ts_rs::TS;
 use crate::llm::error::ProviderError;
 use crate::secret::store::SecretError;
 use crate::storage::store::StorageError;
+use crate::tts::error::TtsError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +101,25 @@ impl From<StorageError> for CommandError {
     }
 }
 
+impl From<TtsError> for CommandError {
+    fn from(error: TtsError) -> Self {
+        let message = error.to_string();
+        match error {
+            // 起動していないのが最も多い失敗。接続の問題として扱う。
+            TtsError::NotRunning(_) => Self::new(CommandErrorKind::Network, message),
+            TtsError::UnknownSpeaker => Self::new(CommandErrorKind::NotFound, message),
+            TtsError::Rejected => Self::new(CommandErrorKind::Invalid, message),
+            TtsError::Protocol => Self::new(CommandErrorKind::Protocol, message),
+            TtsError::Server { status } => Self {
+                kind: CommandErrorKind::Server,
+                message,
+                retry_after_ms: None,
+                status: Some(status),
+            },
+        }
+    }
+}
+
 impl From<SecretError> for CommandError {
     fn from(error: SecretError) -> Self {
         // source 側には詳細が残るが、表示用には出さない
@@ -147,6 +167,13 @@ mod tests {
     fn 見つからない場合は_not_found_になる() {
         let error: CommandError = StorageError::NotFound.into();
         assert_eq!(error.kind, CommandErrorKind::NotFound);
+    }
+
+    #[test]
+    fn 音声合成の未起動は接続の問題として扱う() {
+        let error: CommandError = TtsError::NotRunning("VOICEVOX".to_owned()).into();
+        assert_eq!(error.kind, CommandErrorKind::Network);
+        assert!(error.message.contains("VOICEVOX"));
     }
 
     #[test]
