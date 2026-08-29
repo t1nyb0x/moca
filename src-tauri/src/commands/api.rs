@@ -18,8 +18,10 @@ type Result<T> = std::result::Result<T, CommandError>;
 
 // --- 設定 ---
 
+/// フロントが起動時に最初に呼ぶ。ここまで届けば WebView と IPC は生きている。
 #[tauri::command]
 pub fn settings_get(state: State<'_, AppState>) -> Result<Settings> {
+    tracing::debug!(target: "moca::commands", "設定の読み出し");
     state.settings_get()
 }
 

@@ -53,6 +53,31 @@ cmd.exe /c "cd /d C:\dev\moca && npm run dev"
 cmd.exe /c "set PATH=%USERPROFILE%\.cargo\bin;%PATH% && cd /d C:\dev\moca && cargo test"
 ```
 
+### 起動方法
+
+| コマンド | フロントの取得元 | 用途 |
+|---|---|---|
+| `npm run tauri dev` | Vite 開発サーバー（自動起動） | 開発中はこれを使う |
+| `npm run tauri build` | 同梱した `dist` | 配布物を作る |
+| `npm run tauri build -- --debug --no-bundle` | 同梱した `dist` | 単体起動する実行ファイルだけ欲しいとき |
+
+**`cargo build` で作った `moca.exe` を直接起動してはいけない。** デバッグ
+ビルドは `tauri.conf.json` の `devUrl`（`http://localhost:1420`）を見に
+いくため、Vite が動いていないと接続エラーの画面になる。これは設定の誤り
+ではなく、Tauri の仕様どおりの挙動である。
+
+単体で起動できる実行ファイルが欲しい場合は `tauri build` を使うこと。
+`tauri build` は `frontendDist` を同梱するため、開発サーバーを必要と
+しない。
+
+起動が成功したかは標準出力で確かめられる。次の 2 行が出れば、WebView が
+立ち上がってフロントが IPC に到達している。
+
+```
+INFO  moca: データディレクトリ path=...
+DEBUG moca::commands: 設定の読み出し
+```
+
 ### 環境構築でつまずいた点
 
 **ウイルス対策ソフトによる rustup の失敗。** ESET Security が LLVM のリンカ
