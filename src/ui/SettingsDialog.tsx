@@ -23,6 +23,18 @@ const DEFAULT_BASE_URL: Record<ProviderKind, string> = {
   gemini: "https://generativelanguage.googleapis.com",
 };
 
+/**
+ * OpenAI 互換のローカルサーバーと、その既定の待ち受け先。
+ *
+ * 既定値が Ollama 決め打ちのため、他を使う人はポートを自分で調べる必要が
+ * あった。`/v1` は送信時に付くので、ここはホストとポートまでを持つ。
+ */
+const LOCAL_SERVERS: readonly { readonly name: string; readonly baseUrl: string }[] = [
+  { name: "Ollama", baseUrl: "http://localhost:11434" },
+  { name: "LM Studio", baseUrl: "http://localhost:1234" },
+  { name: "llama.cpp", baseUrl: "http://localhost:8080" },
+];
+
 function emptyProvider(): ProviderProfileDto {
   return {
     id: crypto.randomUUID(),
@@ -68,7 +80,13 @@ function emptyCharacter(providerId: string): CharacterProfile {
 export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const providers = useAppStore((state) => state.providers);
   const characters = useAppStore((state) => state.characters);
+  const activeCharacterId = useAppStore((state) => state.activeCharacterId);
   const bootstrap = useAppStore((state) => state.bootstrap);
+
+  // 一覧の「編集」は編集対象を選ぶだけなので、どれを使っているかが分からない。
+  const activeProviderId = characters.find(
+    (item) => item.id === activeCharacterId,
+  )?.providerId;
 
   const [error, setError] = useState<ReturnType<typeof toCommandError> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -160,9 +178,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <li key={item.id} className="list__item">
                 <span>
                   {item.name}
+                  {item.id === activeProviderId && (
+                    <span className="tag">使用中</span>
+                  )}
                   <small>
                     {KIND_LABELS[item.kind]} / {item.model || "モデル未設定"}
                     {item.hasApiKey ? " / 鍵あり" : ""}
+                    {item.emotionMode === "off" ? " / 感情タグ off" : ""}
                   </small>
                 </span>
                 <span className="list__actions">
@@ -232,6 +254,42 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   }
                 />
               </label>
+
+              {/*
+                既定値は Ollama のもの。他のローカルサーバーを使う人が
+                ポートを調べずに済むよう、候補から選べるようにする。
+              */}
+              {provider.kind === "openaiCompatible" && (
+                <div className="picker">
+                  <p className="picker__label">
+                    よく使う待ち受け先（押すと入ります）
+                  </p>
+                  <div className="picker__items">
+                    {LOCAL_SERVERS.map((server) => (
+                      <button
+                        key={server.baseUrl}
+                        type="button"
+                        aria-pressed={provider.baseUrl === server.baseUrl}
+                        className={
+                          provider.baseUrl === server.baseUrl
+                            ? "picker__item picker__item--on"
+                            : "picker__item"
+                        }
+                        onClick={() =>
+                          setProvider({ ...provider, baseUrl: server.baseUrl })
+                        }
+                      >
+                        {server.name}
+                        <small>{server.baseUrl}</small>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="form__note">
+                    ホストとポートまでを入れてください。<code>/v1</code> は送信時に
+                    付くため、書き足すと <code>/v1/v1/...</code> となって繋がりません。
+                  </p>
+                </div>
+              )}
               <label>
                 モデル
                 <input

@@ -111,6 +111,13 @@ export type AppState = {
   previewEmotion: (emotion: CanonicalEmotion) => void;
   /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
   setIdleSettings: (idle: IdleSettings) => Promise<void>;
+  /**
+   * 接続先を切り替える。選択中のキャラクターへ保存する。
+   *
+   * `setActiveCharacter` と違い会話・表情・モデルを作り直さない。会話を
+   * 続けたまま接続先だけ差し替えられることが、この操作の目的であるため。
+   */
+  setProvider: (providerId: string) => Promise<void>;
   /** 3D ビューの背景色 (要件 F-03-4)。null は既定色。 */
   setBackgroundColor: (color: string | null) => Promise<void>;
   /** カメラ位置を選択中のキャラクターへ保存する (要件 F-03-5)。 */
@@ -197,6 +204,8 @@ function userMessage(content: string): Message {
     rawContent: null,
     emotions: null,
     createdAt: nowIso(),
+    // 利用者の発言は誰も生成していない
+    model: null,
   };
 }
 
@@ -339,6 +348,31 @@ export function createAppStore(): UseBoundStore<
 
       // 先に反映してから保存する。切り替えの手応えを待たせない。
       const updated = { ...character, idleSettings: idle };
+      set({
+        characters: state.characters.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      });
+
+      try {
+        await ipc.characterUpsert(updated);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    setProvider: async (providerId) => {
+      const state = get();
+      const character = state.characters.find(
+        (item) => item.id === state.activeCharacterId,
+      );
+      if (character === undefined) return;
+      // 実在しない接続先を指すと、送信のたびに解決に失敗して黙って止まる
+      if (!state.providers.some((item) => item.id === providerId)) return;
+      if (character.providerId === providerId) return;
+
+      // 先に反映してから保存する。切り替えの手応えを待たせない。
+      const updated = { ...character, providerId };
       set({
         characters: state.characters.map((item) =>
           item.id === updated.id ? updated : item,
@@ -648,7 +682,10 @@ export function createAppStore(): UseBoundStore<
         const messages =
           assembler.display === ""
             ? withUser.messages
-            : [...withUser.messages, assembler.toMessage(nowIso())];
+            : [
+                ...withUser.messages,
+                assembler.toMessage(nowIso(), provider?.model ?? null),
+              ];
 
         const finished: Conversation = {
           ...withUser,

@@ -578,6 +578,7 @@ mod tests {
                         raw_content: None,
                         emotions: None,
                         created_at: now_rfc3339(),
+                        model: None,
                     }],
                     user_input: "お元気ですか".to_owned(),
                 },

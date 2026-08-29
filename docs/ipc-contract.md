@@ -114,6 +114,10 @@ type ModelInfo = { id: string; displayName: string | null };
 
 `provider_upsert` の `apiKey` に `null` を渡した場合、既存のキーを維持する。空文字を渡した場合はキーを削除する。**この区別を実装で取り違えないこと。**
 
+接続先の切り替えは `CharacterProfile.providerId` の書き換えとして行う（`character_upsert`）。専用のコマンドは設けない。切り替えは永続で、そのキャラクターの以後の会話すべてに効く。
+
+`Message.model` は生成に使ったモデルを記録する。**表示のたびに現在の接続先から作ってはならない。** 接続先を切り替えた後、過去の返答に別のモデル名が付いてしまうため。記録が無い古い会話では `null` となる（この項目を足す前に保存されたもの）。
+
 ### 2.3 キャラクタープロファイル
 
 | コマンド | 引数 | 戻り値 |
@@ -181,6 +185,7 @@ type Message = {
   rawContent: string | null;       // タグを含む原文。assistant のみ
   emotions: EmotionSpan[] | null;  // 再開時の表情復元用
   createdAt: string;
+  model: string | null;            // 生成に使ったモデル。assistant のみ
 };
 
 type EmotionSpan = { offset: number; emotion: CanonicalEmotion; intensity: number };

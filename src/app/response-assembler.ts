@@ -97,14 +97,20 @@ export class ResponseAssembler {
     return { appendedText, emotion };
   }
 
-  /** 保存できる形にする。 */
-  toMessage(createdAt: string): Message {
+  /**
+   * 保存できる形にする。
+   *
+   * `model` は生成に使ったモデル。表示のたびに現在の接続先から作ると、
+   * 接続先を切り替えた後で過去の返答が嘘になるため、ここで固定する。
+   */
+  toMessage(createdAt: string, model: string | null): Message {
     return {
       role: "assistant",
       content: this.#display,
       rawContent: this.#raw,
       emotions: this.#emotions.length > 0 ? [...this.#emotions] : null,
       createdAt,
+      model,
     };
   }
 }
