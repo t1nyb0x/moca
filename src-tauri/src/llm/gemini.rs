@@ -87,22 +87,34 @@ pub fn decode_event(event: &SseEvent) -> Result<Vec<StreamItem>, ProviderError> 
         .and_then(Value::as_array)
         .and_then(|candidates| candidates.first())
     {
-        let text: String = candidate
+        let parts = candidate
             .get("content")
             .and_then(|content| content.get("parts"))
-            .and_then(Value::as_array)
-            .map(|parts| {
-                parts
-                    .iter()
-                    // thought: true は思考の中身。本文に混ぜてはならない。
-                    .filter(|part| part.get("thought").and_then(Value::as_bool) != Some(true))
-                    .filter_map(|part| part.get("text").and_then(Value::as_str))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .and_then(Value::as_array);
 
+        let collect = |thought: bool| -> String {
+            parts
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter(|part| {
+                            (part.get("thought").and_then(Value::as_bool) == Some(true)) == thought
+                        })
+                        .filter_map(|part| part.get("text").and_then(Value::as_str))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
+        let text = collect(false);
         if !text.is_empty() {
             items.push(StreamItem::Delta(Delta::Text { value: text }));
+        }
+
+        // thought: true は思考の中身。本文には混ぜず、別種別で流す。
+        let thinking = collect(true);
+        if !thinking.is_empty() {
+            items.push(StreamItem::Delta(Delta::Reasoning { value: thinking }));
         }
 
         if let Some(reason) = candidate.get("finishReason").and_then(Value::as_str) {
@@ -244,9 +256,14 @@ mod tests {
         .unwrap();
         assert_eq!(
             items,
-            vec![StreamItem::Delta(Delta::Text {
-                value: "本文".to_owned()
-            })]
+            vec![
+                StreamItem::Delta(Delta::Text {
+                    value: "本文".to_owned()
+                }),
+                StreamItem::Delta(Delta::Reasoning {
+                    value: "内部の考え".to_owned()
+                })
+            ]
         );
     }
 

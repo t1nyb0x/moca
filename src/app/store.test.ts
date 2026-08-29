@@ -420,6 +420,82 @@ describe("send", () => {
   });
 });
 
+describe("推論モデル", () => {
+  it("思考は本文に混ぜず、進行中として保持する", async () => {
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "reasoning", value: "まず前提を" });
+      onDelta({ kind: "reasoning", value: "整理する" });
+      onDelta({ kind: "text", value: "ごきげんよう" });
+      return okResult;
+    });
+
+    const instance = store();
+    await instance.getState().send("やあ");
+
+    const assistant = instance.getState().conversation?.messages[1];
+    expect(assistant?.content).toBe("ごきげんよう");
+    expect(assistant?.rawContent).not.toContain("前提");
+  });
+
+  it("思考は発話としても流さない", async () => {
+    // リップシンクが思考を喋ってしまわないこと
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "reasoning", value: "考え中" });
+      return okResult;
+    });
+
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(instance.getState().speech.seq).toBe(0);
+  });
+
+  it("思考だけで上限に達したら理由を伝える", async () => {
+    // 黙って何も起きないと不具合と区別がつかない
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "reasoning", value: "延々と考える" });
+      return { stopReason: "maxTokens" as const, usage: null };
+    });
+
+    const instance = store();
+    await instance.getState().send("やあ");
+
+    const error = instance.getState().error;
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("最大トークン数");
+    expect(mocked.conversationSave).not.toHaveBeenCalled();
+  });
+
+  it("本文が空なら理由を伝える", async () => {
+    respondWith([]);
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(instance.getState().error?.message).toContain("本文を返しませんでした");
+  });
+
+  it("中断で本文が空でも文句を言わない", async () => {
+    mocked.chatStream.mockResolvedValue({
+      stopReason: "cancelled" as const,
+      usage: null,
+    });
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(instance.getState().error).toBeNull();
+  });
+
+  it("思考の後に本文が来れば保存する", async () => {
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "reasoning", value: "考え" });
+      onDelta({ kind: "text", value: "答え" });
+      return okResult;
+    });
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(instance.getState().error).toBeNull();
+    expect(mocked.conversationSave).toHaveBeenCalledTimes(1);
+    expect(instance.getState().thinkingText).toBe("");
+  });
+});
+
 describe("cancel", () => {
   it("進行中の要求を中断する", async () => {
     const instance = store();

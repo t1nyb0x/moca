@@ -31,7 +31,8 @@ function emptyProvider(): ProviderProfileDto {
     hasApiKey: false,
     temperature: null,
     topP: null,
-    maxTokens: 2048,
+    // 推論モデルは思考にもトークンを使うため、本文が出るだけの余裕を持たせる
+    maxTokens: 4096,
     emotionMode: "tag",
     contextBudgetTokens: null,
   };
@@ -266,6 +267,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     })
                   }
                 />
+                <small className="form__note">
+                  推論モデル（Qwen3 系など）は思考にもトークンを使います。
+                  返事が出ない場合はここを増やしてください。
+                </small>
               </label>
               <label>
                 感情表現

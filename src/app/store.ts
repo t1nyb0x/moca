@@ -9,6 +9,7 @@ import type { Message } from "@/ipc/generated/Message";
 import type { ModelHandle } from "@/ipc/generated/ModelHandle";
 import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
+import type { StopReason } from "@/ipc/generated/StopReason";
 
 import { budgetFromContextLength, DEFAULT_MAX_TURNS, trimHistory } from "./context-window";
 import { ResponseAssembler, type EmotionCue } from "./response-assembler";
@@ -38,6 +39,11 @@ export type AppState = {
   status: ChatStatus;
   /** 生成中の応答。確定したら conversation へ移す。 */
   streamingText: string;
+  /**
+   * 推論モデルの思考。会話には残さないが、進行中であることを見せるために
+   * 保持する。捨てると思考の長いモデルで画面が固まったように見える。
+   */
+  thinkingText: string;
   requestId: string | null;
   error: CommandError | null;
   emotion: EmotionCue;
@@ -84,6 +90,27 @@ function lastIndexOfUser(messages: readonly Message[]): number {
   return -1;
 }
 
+/**
+ * 本文が空のまま終わったときの説明。
+ *
+ * 推論モデルは思考にトークンを使い切ると本文を 1 文字も返さない。
+ * 何も表示されないままだと、利用者には不具合と区別がつかない。
+ */
+function emptyResponseError(
+  display: string,
+  stopReason: StopReason,
+): CommandError | null {
+  if (display !== "") return null;
+  if (stopReason === "cancelled") return null;
+
+  const message =
+    stopReason === "maxTokens"
+      ? "モデルが思考だけで最大トークン数に達し、本文が生成されませんでした。設定で最大トークン数を増やすか、思考の短いモデルをお試しください。"
+      : "モデルが本文を返しませんでした。";
+
+  return { kind: "invalid", message, retryAfterMs: null, status: null };
+}
+
 function userMessage(content: string): Message {
   return {
     role: "user",
@@ -122,6 +149,7 @@ export function createAppStore(): UseBoundStore<
     conversation: null,
     status: "idle",
     streamingText: "",
+    thinkingText: "",
     requestId: null,
     error: null,
     emotion: NEUTRAL,
@@ -238,7 +266,13 @@ export function createAppStore(): UseBoundStore<
     },
 
     newConversation: () => {
-      set({ conversation: null, streamingText: "", emotion: NEUTRAL, error: null });
+      set({
+        conversation: null,
+        streamingText: "",
+        thinkingText: "",
+        emotion: NEUTRAL,
+        error: null,
+      });
     },
 
     loadConversation: async (id) => {
@@ -306,6 +340,7 @@ export function createAppStore(): UseBoundStore<
         conversation: withUser,
         status: "streaming",
         streamingText: "",
+        thinkingText: "",
         requestId,
         error: null,
       });
@@ -314,6 +349,13 @@ export function createAppStore(): UseBoundStore<
         const result = await ipc.chatStream(
           { requestId, characterId, history, userInput: trimmed },
           (delta) => {
+            if (delta.kind === "reasoning") {
+              // 思考は本文でも発話でもない。表情にもリップシンクにも渡さない。
+              set((current) => ({
+                thinkingText: current.thinkingText + delta.value,
+              }));
+              return;
+            }
             if (delta.kind !== "text") return;
             const update = assembler.push(delta.value);
             set((current) => ({
@@ -345,17 +387,23 @@ export function createAppStore(): UseBoundStore<
           conversation: finished,
           status: "idle",
           streamingText: "",
+          thinkingText: "",
           requestId: null,
+          // 本文が 1 文字も出なかったときは理由を伝える。黙って何も起きない
+          // のが一番困る。中断は利用者の意図なので何も言わない。
+          error: emptyResponseError(assembler.display, result.stopReason),
         });
 
         // 保存はストリームの解決後に一度だけ (IPC 契約 C-2)
-        await ipc.conversationSave(finished);
-        void result;
+        if (assembler.display !== "") {
+          await ipc.conversationSave(finished);
+        }
       } catch (error) {
         // 送った内容は残す。やり直せるようにするため。
         set({
           status: "idle",
           streamingText: "",
+          thinkingText: "",
           requestId: null,
           error: error as CommandError,
         });

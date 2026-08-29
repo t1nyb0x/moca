@@ -74,14 +74,32 @@ pub fn decode_event(event: &SseEvent) -> Result<Vec<StreamItem>, ProviderError> 
         .and_then(Value::as_array)
         .and_then(|choices| choices.first())
     {
-        if let Some(text) = choice
-            .get("delta")
+        let delta = choice.get("delta");
+
+        if let Some(text) = delta
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
         {
             if !text.is_empty() {
                 items.push(StreamItem::Delta(Delta::Text {
                     value: text.to_owned(),
+                }));
+            }
+        }
+
+        // 推論モデルは思考を別のフィールドで返す。Ollama は reasoning、
+        // 他の実装は reasoning_content を使う。本文には混ぜない。
+        if let Some(thought) = delta
+            .and_then(|delta| {
+                delta
+                    .get("reasoning")
+                    .or_else(|| delta.get("reasoning_content"))
+            })
+            .and_then(Value::as_str)
+        {
+            if !thought.is_empty() {
+                items.push(StreamItem::Delta(Delta::Reasoning {
+                    value: thought.to_owned(),
                 }));
             }
         }
@@ -200,6 +218,49 @@ mod tests {
         let items =
             decode_event(&event(r#"{"choices":[{"delta":{"role":"assistant"}}]}"#)).unwrap();
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn 思考を本文と区別して流す() {
+        // 推論モデルは content を空にして reasoning に思考を入れる
+        let items = decode_event(&event(
+            r#"{"choices":[{"delta":{"content":"","reasoning":"考えている"}}]}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            items,
+            vec![StreamItem::Delta(Delta::Reasoning {
+                value: "考えている".to_owned()
+            })]
+        );
+    }
+
+    #[test]
+    fn reasoning_content_という名前でも拾う() {
+        let items = decode_event(&event(
+            r#"{"choices":[{"delta":{"reasoning_content":"考えている"}}]}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            items,
+            vec![StreamItem::Delta(Delta::Reasoning {
+                value: "考えている".to_owned()
+            })]
+        );
+    }
+
+    #[test]
+    fn 本文と思考が同時に来ても両方流す() {
+        let items = decode_event(&event(
+            r#"{"choices":[{"delta":{"content":"はい","reasoning":"考え"}}]}"#,
+        ))
+        .unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(matches!(items[0], StreamItem::Delta(Delta::Text { .. })));
+        assert!(matches!(
+            items[1],
+            StreamItem::Delta(Delta::Reasoning { .. })
+        ));
     }
 
     #[test]

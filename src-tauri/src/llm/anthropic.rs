@@ -96,7 +96,20 @@ pub fn decode_event(event: &SseEvent) -> Result<Vec<StreamItem>, ProviderError> 
                 .and_then(Value::as_str)
                 .unwrap_or_default();
 
-            // thinking_delta は思考の中身。チャット本文に混ぜてはならない。
+            // thinking_delta は思考の中身。本文には混ぜず、別の種別で流す。
+            if delta_kind == "thinking_delta" {
+                let thought = delta
+                    .and_then(|delta| delta.get("thinking"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if thought.is_empty() {
+                    return Ok(Vec::new());
+                }
+                return Ok(vec![StreamItem::Delta(Delta::Reasoning {
+                    value: thought.to_owned(),
+                })]);
+            }
+
             if delta_kind != "text_delta" {
                 return Ok(Vec::new());
             }
@@ -214,7 +227,13 @@ mod tests {
             r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"内部の考え"}}"#,
         ))
         .unwrap();
-        assert!(items.is_empty(), "思考が本文へ漏れている");
+        assert_eq!(
+            items,
+            vec![StreamItem::Delta(Delta::Reasoning {
+                value: "内部の考え".to_owned()
+            })],
+            "思考は本文ではなく別種別で流す"
+        );
     }
 
     #[test]

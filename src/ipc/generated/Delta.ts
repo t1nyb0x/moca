@@ -7,4 +7,4 @@ import type { Usage } from "./Usage";
  * エラーは Channel に流さず、コマンドの戻り値でのみ表現する。
  * 経路が 2 本あるとフロント側の状態管理が壊れる (docs/ipc-contract.md 2.6)。
  */
-export type Delta = { "kind": "text", value: string, } | { "kind": "usage" } & Usage;
+export type Delta = { "kind": "text", value: string, } | { "kind": "reasoning", value: string, } | { "kind": "usage" } & Usage;

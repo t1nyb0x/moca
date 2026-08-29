@@ -68,7 +68,15 @@ pub struct Usage {
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export)]
 pub enum Delta {
-    Text { value: String },
+    Text {
+        value: String,
+    },
+    /// 推論モデルの思考。本文ではないので会話には残さないが、進行中で
+    /// あることを伝えるために流す。これを捨てると、思考の長いモデルでは
+    /// 何も起きていないように見える。
+    Reasoning {
+        value: String,
+    },
     Usage(Usage),
 }
 
@@ -133,6 +141,15 @@ mod tests {
         })
         .unwrap();
         assert_eq!(json, r#"{"kind":"text","value":"こんにちは"}"#);
+    }
+
+    #[test]
+    fn 思考の差分は本文と区別される() {
+        let json = serde_json::to_string(&Delta::Reasoning {
+            value: "考え中".to_owned(),
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"kind":"reasoning","value":"考え中"}"#);
     }
 
     #[test]

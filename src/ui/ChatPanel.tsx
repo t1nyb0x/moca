@@ -7,6 +7,7 @@ export function ChatPanel(): React.JSX.Element {
   const conversation = useAppStore((state) => state.conversation);
   const status = useAppStore((state) => state.status);
   const streamingText = useAppStore((state) => state.streamingText);
+  const thinkingText = useAppStore((state) => state.thinkingText);
   const error = useAppStore((state) => state.error);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
   const send = useAppStore((state) => state.send);
@@ -24,7 +25,7 @@ export function ChatPanel(): React.JSX.Element {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, streamingText]);
+  }, [messages.length, streamingText, thinkingText]);
 
   const submit = (): void => {
     const value = input;
@@ -61,7 +62,18 @@ export function ChatPanel(): React.JSX.Element {
           </article>
         ))}
 
-        {streaming && (
+        {/*
+          推論モデルは本文の前に長く考える。何も出さないと固まったように
+          見えるので、思考中であることと末尾だけを示す。
+        */}
+        {streaming && streamingText === "" && thinkingText !== "" && (
+          <article className="bubble bubble--thinking">
+            <span className="bubble__label">考えています</span>
+            {thinkingText.slice(-120)}
+          </article>
+        )}
+
+        {streaming && (streamingText !== "" || thinkingText === "") && (
           <article className="bubble bubble--assistant bubble--streaming">
             {streamingText}
             <span className="bubble__caret" aria-hidden="true" />

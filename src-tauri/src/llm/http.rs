@@ -298,7 +298,7 @@ mod tests {
             .iter()
             .filter_map(|delta| match delta {
                 Delta::Text { value } => Some(value.as_str()),
-                Delta::Usage(_) => None,
+                Delta::Reasoning { .. } | Delta::Usage(_) => None,
             })
             .collect()
     }
@@ -339,6 +339,59 @@ mod tests {
                 output_tokens: 4
             })
         );
+    }
+
+    /// Ollama の推論モデルが実際に返す形。content は空で reasoning に思考が入る。
+    #[tokio::test]
+    async fn 推論モデルの思考を本文と分けて流す() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(sse(concat!(
+                "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"考えて\"}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"reasoning\":\"います\"}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"ごきげんよう\"}}]}\n\n",
+                "data: [DONE]\n\n",
+            )))
+            .mount(&server)
+            .await;
+
+        let provider =
+            HttpProvider::new(ProviderKind::OpenaiCompatible, server.uri(), None).unwrap();
+        let (deltas, result) = collect(&provider, CancellationToken::new()).await;
+
+        assert_eq!(text_of(&deltas), "ごきげんよう", "思考が本文へ漏れている");
+
+        let thinking: String = deltas
+            .iter()
+            .filter_map(|delta| match delta {
+                Delta::Reasoning { value } => Some(value.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(thinking, "考えています");
+        assert!(result.is_ok());
+    }
+
+    /// 思考だけで上限に達し、本文が 1 文字も出ない場合。
+    #[tokio::test]
+    async fn 思考だけで打ち切られた場合も正常終了する() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(sse(concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"reasoning\":\"延々と\"}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+                "data: [DONE]\n\n",
+            )))
+            .mount(&server)
+            .await;
+
+        let provider =
+            HttpProvider::new(ProviderKind::OpenaiCompatible, server.uri(), None).unwrap();
+        let (deltas, result) = collect(&provider, CancellationToken::new()).await;
+
+        assert_eq!(text_of(&deltas), "");
+        assert_eq!(result.unwrap().stop_reason, StopReason::MaxTokens);
     }
 
     #[tokio::test]
