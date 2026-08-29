@@ -1,7 +1,7 @@
 {
   "name": "moca",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,11 +12,14 @@
     "coverage": "vitest run --coverage",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version:check": "node scripts/version.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",
     "@tauri-apps/api": "^2.11.1",
+    "@yohawing/three-mmd-loader": "^0.8.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1",

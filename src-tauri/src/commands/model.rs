@@ -21,9 +21,8 @@ type Result<T> = std::result::Result<T, CommandError>;
 /// これを超えたら警告する (要件 R-4、未決事項 U-10)。読み込みは妨げない。
 pub const OVERSIZE_THRESHOLD_BYTES: u64 = 150 * 1024 * 1024;
 
-/// PMX は P1 で対応する。無言で失敗させないためにここで明示的に断る
-/// (要件 F-01-7)。
-const PMX_SUPPORTED: bool = false;
+/// PMX に対応済み。0.3 で `PmxAdapter` を入れた (ADR-0004)。
+const PMX_SUPPORTED: bool = true;
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -89,24 +88,49 @@ fn open_path(app: &AppHandle, path: PathBuf) -> Result<ModelHandle> {
 
     let handle = build_handle(&path, metadata.len())?;
 
-    // ユーザーが選んだこのファイルだけを許可する。ディレクトリ全体は開けない。
-    app.asset_protocol_scope()
-        .allow_file(&path)
-        .map_err(|err| {
-            tracing::debug!(target: "moca::commands", error = ?err, "スコープ登録に失敗");
-            CommandError::new(
-                CommandErrorKind::Io,
-                "ファイルへのアクセスを許可できませんでした",
-            )
-        })?;
+    grant_access(app, &path, handle.format)?;
 
     tracing::info!(
         target: "moca::commands",
         format = ?handle.format,
-        size = handle.size_bytes,
+        // バイト数は整数で出す。f64 のまま出すと 31209924.0 になって読みにくい
+        size = handle.size_bytes as u64,
         "モデルを開いた"
     );
     Ok(handle)
+}
+
+/// 読み込みに必要な範囲だけアクセスを許す。
+///
+/// VRM は 1 ファイルにテクスチャを内包するので、そのファイルだけでよい。
+/// PMX はテクスチャを外部ファイルとして相対パスで参照するため、モデルの
+/// あるディレクトリを許可しないと絵が出ない。必要最小限にするため、
+/// 親ディレクトリまでに留めて上位へは広げない。
+fn grant_access(app: &AppHandle, path: &Path, format: ModelFormat) -> Result<()> {
+    let scope = app.asset_protocol_scope();
+
+    let granted = match format {
+        ModelFormat::Vrm => scope.allow_file(path),
+        ModelFormat::Pmx => match path.parent() {
+            Some(dir) => {
+                tracing::debug!(
+                    target: "moca::commands",
+                    dir = %dir.display(),
+                    "PMX のテクスチャのためディレクトリを許可する"
+                );
+                scope.allow_directory(dir, true)
+            }
+            None => scope.allow_file(path),
+        },
+    };
+
+    granted.map_err(|err| {
+        tracing::debug!(target: "moca::commands", error = ?err, "スコープ登録に失敗");
+        CommandError::new(
+            CommandErrorKind::Io,
+            "ファイルへのアクセスを許可できませんでした",
+        )
+    })
 }
 
 /// ネイティブのファイルダイアログを開く。選ばなければ None。
@@ -116,7 +140,9 @@ pub async fn model_pick(app: AppHandle) -> Result<Option<ModelHandle>> {
 
     app.dialog()
         .file()
+        .add_filter("モデル", &["vrm", "pmx"])
         .add_filter("VRM モデル", &["vrm"])
+        .add_filter("PMX モデル", &["pmx"])
         .pick_file(move |picked| {
             let _ = tx.send(picked);
         });
@@ -160,16 +186,14 @@ mod tests {
     }
 
     #[test]
-    fn pmx_は明示的に断る() {
-        // 無言で失敗させない (要件 F-01-7)
-        let error = build_handle(Path::new("a.pmx"), 1).unwrap_err();
-        assert_eq!(error.kind, CommandErrorKind::Invalid);
-        assert!(error.message.contains("PMX"));
+    fn pmx_を受け付ける() {
+        let handle = build_handle(Path::new("C:/models/china.pmx"), 42).unwrap();
+        assert_eq!(handle.format, ModelFormat::Pmx);
     }
 
     #[test]
     fn 未対応の拡張子を断る() {
-        for name in ["a.glb", "a.fbx", "a.txt", "a"] {
+        for name in ["a.glb", "a.fbx", "a.pmd", "a.txt", "a"] {
             let error = build_handle(Path::new(name), 1).unwrap_err();
             assert_eq!(error.kind, CommandErrorKind::Invalid, "{name}");
         }

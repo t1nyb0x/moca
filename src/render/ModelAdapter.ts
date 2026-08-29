@@ -6,6 +6,22 @@ import type { WeightMap } from "@/domain/motion/types";
 export type ModelFormatName = "vrm" | "pmx";
 
 /**
+ * モデルを読み込むために要る情報。
+ *
+ * PMX はテクスチャを相対パスで参照するので、URL だけでは足りない。元の
+ * ファイルパスと、絶対パスを取得可能な URL へ変える手段が要る。
+ */
+export type ModelLoadContext = {
+  /** three.js のローダーへ渡す URL。 */
+  readonly url: string;
+  /** モデルの絶対パス。相対参照の起点になる。 */
+  readonly path: string;
+  readonly format: ModelFormatName;
+  /** 絶対パスをアセットプロトコルの URL へ変える。 */
+  readonly toAssetUrl: (absolutePath: string) => string;
+};
+
+/**
  * モデル形式の差異を吸収する境界 (ADR-0004)。
  *
  * MVP では `VrmAdapter` 1 実装のみ。実装が 1 つしかない抽象は本来
@@ -46,6 +62,12 @@ export interface ModelAdapter {
 
   /** モデル全体の高さ。 */
   height(): number;
+
+  /** モデルが持つボーン名。 */
+  boneNames(): readonly string[];
+
+  /** 立ち姿の調整で実際に動かしたボーン。空なら当たっていない。 */
+  adjustedBones(): readonly string[];
 
   dispose(): void;
 }

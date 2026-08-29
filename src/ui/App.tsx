@@ -5,6 +5,8 @@ import { ChatPanel } from "./ChatPanel";
 import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { ConversationList } from "./ConversationList";
+import { useModelDrop } from "./useModelDrop";
 
 /**
  * アプリケーションの外枠。
@@ -27,6 +29,9 @@ export function App(): React.JSX.Element {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const dropping = useModelDrop();
+  const [licenseAcknowledged, setLicenseAcknowledged] = useState(false);
 
   useEffect(() => {
     void bootstrap();
@@ -85,6 +90,13 @@ export function App(): React.JSX.Element {
 
         <button
           type="button"
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-pressed={historyOpen}
+        >
+          会話
+        </button>
+        <button
+          type="button"
           onClick={newConversation}
           disabled={status === "streaming"}
         >
@@ -102,6 +114,28 @@ export function App(): React.JSX.Element {
         </button>
       </header>
 
+      {/*
+        要件 4.4: MMD 向けモデルは再配布・改変・利用目的に制限を課す規約を
+        持つものが多い。読み込んだ時点で確認を促す。
+      */}
+      {model?.format === "pmx" && !licenseAcknowledged && (
+        <p className="banner banner--notice" role="status">
+          <span className="banner__body">
+            <strong>PMX の対応は実験的です。</strong>
+            表示と揺れ物までを目安としており、表情は診断パネルから手で
+            割り当てる必要があります。立ち姿と視線は調整されません。
+            <br />
+            また MMD 向けのモデルは、再配布や改変、利用目的に制限を設けている
+            ものが多くあります。配布元の規約をご確認のうえお使いください。
+          </span>
+          <span className="banner__actions">
+            <button type="button" onClick={() => setLicenseAcknowledged(true)}>
+              確認しました
+            </button>
+          </span>
+        </p>
+      )}
+
       {model?.oversized === true && (
         <p className="banner banner--notice" role="status">
           このモデルはファイルが大きめです。表示が重い場合は 3D を隠してお使いください。
@@ -109,6 +143,7 @@ export function App(): React.JSX.Element {
       )}
 
       <main className="app__main">
+        {historyOpen && <ConversationList onClose={() => setHistoryOpen(false)} />}
         {/* モデル未設定でも、3D を隠していてもチャットは完全に成立する (要件 F-02) */}
         {model !== null && showViewer && <ViewerHost />}
         <ChatPanel />
@@ -116,6 +151,12 @@ export function App(): React.JSX.Element {
       </main>
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+
+      {dropping && (
+        <div className="drop" aria-hidden="true">
+          <p className="drop__message">VRM ファイルをここに落としてください</p>
+        </div>
+      )}
     </div>
   );
 }

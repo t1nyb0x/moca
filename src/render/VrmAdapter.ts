@@ -238,6 +238,19 @@ export class VrmAdapter implements ModelAdapter {
     return head.getWorldPosition(out);
   }
 
+  boneNames(): readonly string[] {
+    const names: string[] = [];
+    this.#vrm.scene.traverse((object) => {
+      if ((object as THREE.Bone).isBone === true) names.push(object.name);
+    });
+    return names;
+  }
+
+  /** VRM は正規化された人型ボーンを持つので必ず当たる。 */
+  adjustedBones(): readonly string[] {
+    return ["leftUpperArm", "rightUpperArm"];
+  }
+
   height(): number {
     const box = new THREE.Box3().setFromObject(this.#vrm.scene);
     const size = box.getSize(new THREE.Vector3());

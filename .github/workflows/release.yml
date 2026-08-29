@@ -1,25 +1,68 @@
 name: Release
 
+# main へ取り込まれた時点で、版番号に対応するタグが無ければ打ち、
+# インストーラを作って下書きのプレリリースとして公開する。
+#
+# 版番号は package.json / Cargo.toml / tauri.conf.json の 3 箇所にあり、
+# CI で一致を確かめている。リリースの起点はその版番号であって、手で打つ
+# タグではない。手順から人が抜けるほど取りこぼしが減る。
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "作成するタグ（例: v0.1.0）"
-        required: true
+      force:
+        description: "タグが既にあっても作り直す"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      release: ${{ steps.tag.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: 版番号を読む
+        id: version
+        run: echo "value=$(node scripts/version.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: タグの有無を確かめる
+        id: tag
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1 && [ "$FORCE" != "true" ]; then
+            echo "v${VERSION} は既にあります。何もしません。"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${VERSION} を公開します。"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -33,20 +76,34 @@ jobs:
       - name: 依存の導入
         run: npm ci
 
-      # リリース物が壊れていないことを最低限確かめる
+      # 壊れたものにタグを打たないよう、先に確かめる
       - name: 型チェックとテスト
         run: |
           npm run typecheck
           npm run test
 
-      # NSIS インストーラを作る。WebView2 のブートストラッパを同梱する
-      # 設定は tauri.conf.json 側にある (要件 4.1)。
-      - uses: tauri-apps/tauri-action@v0
+      - name: タグを打つ
+        shell: bash
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f -a "v${VERSION}" -m "${VERSION}"
+          git push -f origin "v${VERSION}"
+
+      # NSIS インストーラを作る。WebView2 のブートストラッパ同梱は
+      # tauri.conf.json 側の設定 (要件 4.1)。
+      #
+      # v1 は releaseDraft: true を指定したのに対象が下書きでない場合、
+      # 失敗するようになった。公開済みの版を force で作り直すときは、
+      # 先にリリースを消すか下書きへ戻す必要がある。
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: moca ${{ github.event.inputs.tag || github.ref_name }}
+          tagName: v${{ needs.decide.outputs.version }}
+          releaseName: moca v${{ needs.decide.outputs.version }}
           releaseBody: |
             変更点は [CHANGELOG.md](https://github.com/t1nyb0x/moca/blob/main/CHANGELOG.md) を参照してください。
 
@@ -57,5 +114,7 @@ jobs:
             ## 使うために必要なもの
             - VRM モデル（同梱していません。お手持ちのファイルを読み込んでください）
             - LLM の接続先（Ollama / LM Studio / llama.cpp / OpenAI / Anthropic / Gemini のいずれか）
+
+            インストーラに署名はありません。SmartScreen の警告が出ます。
           releaseDraft: true
           prerelease: true

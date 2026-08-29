@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { CanonicalEmotion, EmotionCue } from "@/domain/emotion/types";
+import type { MorphTarget } from "@/domain/model/pmx-mapping";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
   advanceBlink,
@@ -37,10 +38,19 @@ import {
   type LipSyncConfig,
   type LipSyncState,
 } from "@/domain/lipsync/controller";
+import {
+  advanceAudioLipSync,
+  createAudioLipSyncState,
+  evaluateAudioLipSync,
+  type AudioLipSyncState,
+  type AudioSample,
+} from "@/domain/lipsync/audio";
+import type { CameraState } from "@/ipc/generated/CameraState";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 import { MorphApplier } from "./MorphApplier";
-import type { ModelAdapter } from "./ModelAdapter";
+import type { ModelAdapter, ModelLoadContext } from "./ModelAdapter";
+import { loadPmx, PmxAdapter } from "./PmxAdapter";
 import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
@@ -90,6 +100,14 @@ export class Viewer {
   #breath: BreathState;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
+  #audioLipSync: AudioLipSyncState = createAudioLipSyncState();
+  /**
+   * 再生中の音声から今の位置と音量を測る手段。
+   *
+   * これがあるあいだは文字数まかせの疑似リップシンクを使わない。
+   * 実際に鳴っている音に合わせるほうが常に正確なため。
+   */
+  #audioSampler: (() => AudioSample) | null = null;
   /**
    * まだ発話が追いついていない感情の切り替え。
    *
@@ -178,22 +196,46 @@ export class Viewer {
   }
 
   /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
-  async setModel(url: string | null): Promise<ModelDiagnostics | null> {
+  async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
     this.#clearModel();
-    if (url === null) return null;
+    if (context === null) return null;
 
-    const adapter = await loadVrm(url);
+    const adapter =
+      context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
     this.setFraming("upper");
 
+    return this.#diagnostics();
+  }
+
+  /**
+   * 感情ごとのモーフ割り当てを差し替える (PMX のみ)。
+   *
+   * VRM は表情が標準化されているので割り当ての概念が無く、何もしない。
+   */
+  setEmotionOverrides(
+    overrides: Readonly<Partial<Record<CanonicalEmotion, readonly MorphTarget[]>>>,
+  ): ModelDiagnostics | null {
+    const adapter = this.#adapter;
+    if (!(adapter instanceof PmxAdapter)) return null;
+    adapter.setEmotionOverrides(overrides);
+    return this.#diagnostics();
+  }
+
+  #diagnostics(): ModelDiagnostics | null {
+    const adapter = this.#adapter;
+    if (adapter === null) return null;
     return {
       textureCount: adapter.textureCount,
       expressionNames: adapter.availableMorphs(),
       expressibleEmotions: adapter.expressibleEmotions(),
       approximatedEmotions: adapter.approximatedEmotions(),
       rendererName: this.rendererInfo(),
+      emotionMorphs: adapter instanceof PmxAdapter ? adapter.emotionMorphs() : null,
+      boneNames: adapter.boneNames(),
+      adjustedBones: adapter.adjustedBones(),
     };
   }
 
@@ -216,6 +258,34 @@ export class Viewer {
     this.#lipSync = feedLipSync(this.#lipSync, text);
   }
 
+  /**
+   * 読み上げ音声に合わせて口を動かす。
+   *
+   * 合成に渡したのと同じ文を渡すこと。音声と文は対応しているので、
+   * 再生位置から口形が決まる。感情はこの音声の先頭に対応するため、
+   * 待たずにここで切り替える。
+   */
+  speakAudio(text: string, emotion: EmotionCue | null, sample: () => AudioSample): void {
+    // 疑似リップシンクの積み残しを持ち込まない。二重に口が動いてしまう。
+    this.#lipSync = createLipSyncState();
+    this.#emotionMarkers = [];
+    this.#audioLipSync = createAudioLipSyncState(text);
+    this.#audioSampler = sample;
+    if (emotion !== null) {
+      this.#expression = setExpressionTarget(
+        this.#expression,
+        emotion.emotion,
+        emotion.intensity,
+      );
+    }
+  }
+
+  /** 再生が終わった、または止められた。口を閉じて通常の駆動へ戻す。 */
+  endAudioSpeech(): void {
+    this.#audioSampler = null;
+    this.#audioLipSync = createAudioLipSyncState();
+  }
+
   setIdleSettings(idle: IdleSettings): void {
     this.#idle = idle;
     this.#adapter?.setLookAtTarget(idle.lookAt ? this.#lookAtTarget : null);
@@ -226,6 +296,25 @@ export class Viewer {
       ...DEFAULT_LIPSYNC_CONFIG,
       charsPerSecond: Math.max(1, charsPerSecond),
     };
+  }
+
+  /** 現在のカメラ位置。キャラクターへ保存するために取り出す (要件 F-03-5)。 */
+  cameraState(): CameraState {
+    const { x, y, z } = this.#camera.position;
+    const target = this.#controls.target;
+    return {
+      position: [x, y, z],
+      target: [target.x, target.y, target.z],
+    };
+  }
+
+  /** 保存しておいたカメラ位置へ戻す。 */
+  applyCameraState(state: CameraState): void {
+    const [px, py, pz] = state.position;
+    const [tx, ty, tz] = state.target;
+    this.#camera.position.set(px, py, pz);
+    this.#controls.target.set(tx, ty, tz);
+    this.#controls.update();
   }
 
   setBackgroundColor(color: string | null): void {
@@ -313,8 +402,13 @@ export class Viewer {
 
   #step(delta: number): void {
     this.#expression = advanceExpression(this.#expression, delta);
-    this.#lipSync = advanceLipSync(this.#lipSync, delta, this.#lipSyncConfig);
-    this.#fireDueEmotions();
+    const sampler = this.#audioSampler;
+    if (sampler === null) {
+      this.#lipSync = advanceLipSync(this.#lipSync, delta, this.#lipSyncConfig);
+      this.#fireDueEmotions();
+    } else {
+      this.#audioLipSync = advanceAudioLipSync(this.#audioLipSync, delta, sampler());
+    }
     if (this.#idle.blink) this.#blink = advanceBlink(this.#blink, delta);
     if (this.#idle.breath) this.#breath = advanceBreath(this.#breath, delta);
     if (this.#idle.saccade) {
@@ -333,7 +427,10 @@ export class Viewer {
         adapter,
         {
           expression: evaluateExpression(this.#expression),
-          lipSync: evaluateLipSync(this.#lipSync),
+          lipSync:
+            this.#audioSampler === null
+              ? evaluateLipSync(this.#lipSync)
+              : evaluateAudioLipSync(this.#audioLipSync),
           idle: this.#idle.blink ? [evaluateBlink(this.#blink)] : [],
         },
         this.#idle.breath

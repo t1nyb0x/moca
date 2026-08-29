@@ -119,6 +119,81 @@ textarea {
   display: flex;
 }
 
+/* --- 会話の一覧 --- */
+
+.history {
+  flex: 0 0 15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+  overflow-y: auto;
+}
+
+.history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history__header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.history__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.history__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.history__item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.history__open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+}
+
+.history__item--on .history__open {
+  border-color: var(--accent);
+  background: var(--user-bubble);
+}
+
+.history__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.history__delete {
+  flex: 0 0 auto;
+  font-size: 0.82em;
+}
+
 /* --- 3D ビュー --- */
 
 .viewer {
@@ -136,6 +211,43 @@ textarea {
 
 .viewer__canvas canvas {
   display: block;
+}
+
+.vtool {
+  position: absolute;
+  inset: auto auto 0.6rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.vtool__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.vtool button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85em;
+}
+
+.vtool__color {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85em;
+}
+
+.vtool__color input {
+  width: 2.2rem;
+  height: 1.5rem;
+  padding: 0;
 }
 
 .viewer__failure {
@@ -339,6 +451,19 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.diag__path {
+  display: block;
+  margin: 0.2rem 0;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .diag__buttons {
   display: flex;
   flex-wrap: wrap;
@@ -389,6 +514,88 @@ textarea {
 .banner__actions {
   display: flex;
   gap: 0.4rem;
+}
+
+/* --- 画面が落ちたとき --- */
+
+.crash {
+  padding: 1.5rem;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.crash h1 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+
+.crash__detail {
+  padding: 0.7rem;
+  border: 1px solid var(--error-border);
+  border-radius: 8px;
+  background: var(--error-bg);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- ファイルの投下 --- */
+
+.drop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.drop__message {
+  margin: 0;
+  padding: 1rem 1.6rem;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+/* --- 表情の割り当て --- */
+
+.mapping {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mapping__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mapping__head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.mapping__spacer {
+  flex: 1;
+}
+
+.mapping__row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.mapping__row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.mapping__row input {
+  width: 5rem;
 }
 
 /* --- 設定ダイアログ --- */
@@ -523,4 +730,66 @@ textarea {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.85em;
+}
+
+/* --- 声の設定 --- */
+
+.form__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form__fieldset legend {
+  padding: 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+/* 入れ子の枠が二重に見えないよう、外枠と余白を持たせない */
+.form--nested {
+  margin-top: 0.4rem;
+  padding: 0;
+  border: 0;
+}
+
+.form .form__check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.form__group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}
+
+.form__group[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form__group summary {
+  cursor: pointer;
+  font-size: 0.92em;
+}
+
+/* 値を右端に揃え、つまみを動かしても幅が動かないようにする */
+.form .form__range {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form .form__range input {
+  flex: 1;
+}
+
+.form .form__range span {
+  min-width: 2.6rem;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }

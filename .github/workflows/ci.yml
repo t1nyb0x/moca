@@ -17,9 +17,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -34,6 +34,10 @@ jobs:
 
       - name: 依存の導入
         run: npm ci
+
+      # 3 箇所の版番号がずれるとインストーラの版だけが古くなる
+      - name: 版番号の一致
+        run: npm run version:check
 
       - name: 型チェック
         run: npm run typecheck
@@ -70,3 +74,35 @@ jobs:
             echo "::error::IPC の型が古いままです。src-tauri で cargo test を実行し、生成物をコミットしてください。"
             exit 1
           fi
+
+  # 実際に起動して疎通するかを確かめる。型やテストが通っても、WebView が
+  # 立ち上がらない・IPC が繋がらないといった不具合は捕まえられない。
+  # 実際そうした不具合を何度も出している。
+  smoke:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: smoke
+
+      - name: 依存の導入
+        run: npm ci
+
+      # cargo build ではなく tauri build を使う。前者の成果物は開発サーバー
+      # を見にいくため単体で起動できない (README 参照)。
+      - name: アプリのビルド
+        run: npx tauri build --debug --no-bundle
+
+      - name: 起動して疎通を確かめる
+        run: npm run smoke

@@ -3,9 +3,14 @@ import type { CameraState } from "./CameraState";
 import type { EmotionMapping } from "./EmotionMapping";
 import type { IdleSettings } from "./IdleSettings";
 import type { ModelFormat } from "./ModelFormat";
+import type { VoiceSettings } from "./VoiceSettings";
 
 export type CharacterProfile = { id: string, name: string, 
 /**
  * None はモデル未設定 (要件 F-02)
  */
-modelPath: string | null, modelFormat: ModelFormat | null, systemPrompt: string, providerId: string, cameraPreset: CameraState | null, idleSettings: IdleSettings, emotionMapping: EmotionMapping | null, schemaVersion: number, createdAt: string, updatedAt: string, };
+modelPath: string | null, modelFormat: ModelFormat | null, systemPrompt: string, providerId: string, cameraPreset: CameraState | null, idleSettings: IdleSettings, emotionMapping: EmotionMapping | null, 
+/**
+ * 後から足した項目なので default が要る。無いと既存の記録が読めなくなる。
+ */
+voiceSettings: VoiceSettings | null, schemaVersion: number, createdAt: string, updatedAt: string, };

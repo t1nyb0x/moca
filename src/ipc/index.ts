@@ -17,6 +17,8 @@ import type { ModelInfo } from "./generated/ModelInfo";
 import type { ProviderHealth } from "./generated/ProviderHealth";
 import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
 import type { Settings } from "./generated/Settings";
+import type { SpeakerInfo } from "./generated/SpeakerInfo";
+import type { TtsKind } from "./generated/TtsKind";
 import { toCommandError } from "./errors";
 
 /** 失敗を必ず CommandError にそろえる。 */
@@ -79,6 +81,9 @@ export const conversationSave = (conversation: Conversation): Promise<void> =>
 export const conversationDelete = (id: string): Promise<void> =>
   call("conversation_delete", { id });
 
+/** ログの保存先。不具合の報告に添えてもらうために表示する。 */
+export const logsDir = (): Promise<string> => call("logs_dir");
+
 /** ネイティブのファイルダイアログを開く。選ばなければ null。 */
 export const modelPick = (): Promise<ModelHandle | null> => call("model_pick");
 
@@ -113,6 +118,32 @@ export function chatStream(
 /** 冪等。すでに終わった要求への中断も成功する。 */
 export const chatCancel = (requestId: string): Promise<void> =>
   call("chat_cancel", { requestId });
+
+/** 接続先が話せる話者。接続テストも兼ねる。 */
+export const ttsSpeakers = (kind: TtsKind, baseUrl: string): Promise<SpeakerInfo[]> =>
+  call("tts_speakers", { kind, baseUrl });
+
+/**
+ * 話者が持つ感情成分の名前。
+ *
+ * 顔ぶれはキャストごとに違う。VOICEVOX は成分を持たないので空になる。
+ */
+export const ttsEmotionAxes = (
+  kind: TtsKind,
+  baseUrl: string,
+  speaker: string,
+): Promise<string[]> => call("tts_emotion_axes", { kind, baseUrl, speaker });
+
+/**
+ * 感情に応じた声で読み上げた WAV を得る。
+ *
+ * 音声は数百 KB になるため生のバイト列で届く (docs/ipc-contract.md 2.6)。
+ */
+export const ttsSynthesize = (
+  characterId: string,
+  text: string,
+  emotion: string,
+): Promise<ArrayBuffer> => call("tts_synthesize", { characterId, text, emotion });
 
 export { isCommandError, toCommandError } from "./errors";
 export type { CommandError, CommandErrorKind } from "./errors";

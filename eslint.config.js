@@ -12,7 +12,7 @@ import globals from "globals";
  *   render      ->  domain
  *   ipc         ->  domain
  */
-const OUTER_LAYERS = ["render", "app", "ui", "ipc"];
+const OUTER_LAYERS = ["render", "app", "ui", "ipc", "audio"];
 
 const forbid = (groups, message) => ({ group: groups, message });
 
@@ -25,6 +25,26 @@ export default tseslint.config(
   {
     languageOptions: {
       globals: { ...globals.browser, ...globals.es2022 },
+    },
+    rules: {
+      // 使わない引数は名前の頭に _ を付けて意図を示す。インターフェースを
+      // 満たすために受け取るが使わない、という場面がある。
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+
+  // --- 開発用のスクリプトは Node で動く ---
+  {
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
 
@@ -61,6 +81,22 @@ export default tseslint.config(
           forbid(
             ["ui", "app"].flatMap((l) => [`@/${l}/**`, `**/../${l}/**`]),
             "render から ui / app を import してはならない。状態は購読で受け取る (ADR-0008)"),
+        ],
+      }],
+    },
+  },
+
+  // --- audio: WebAudio 層。domain のみ参照可 (ADR-0007 と同じ理由) ---
+  {
+    files: ["src/audio/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [
+          forbid(["react", "react-dom", "react/**", "react-dom/**"],
+            "audio は React に依存してはならない。再生は React の管理外"),
+          forbid(
+            ["ui", "app"].flatMap((l) => [`@/${l}/**`, `**/../${l}/**`]),
+            "audio から ui / app を import してはならない (ADR-0008)"),
         ],
       }],
     },
