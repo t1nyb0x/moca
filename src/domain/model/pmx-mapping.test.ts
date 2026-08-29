@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canExpress, resolveDefaultMapping } from "./pmx-mapping";
+import { applyOverrides, canExpress, resolveDefaultMapping } from "./pmx-mapping";
 
 /** MMD の標準的なモデルに広く見られるモーフ名。 */
 const STANDARD = [
@@ -100,5 +100,56 @@ describe("resolveDefaultMapping", () => {
     const relaxedNames = mapping.emotions.relaxed.map((t) => t.morphName);
     expect(happyNames).toContain("にこり");
     expect(relaxedNames).toContain("にこり");
+  });
+});
+
+describe("applyOverrides", () => {
+  const base = resolveDefaultMapping(STANDARD);
+
+  it("指定した感情を置き換える", () => {
+    const result = applyOverrides(
+      base,
+      { happy: [{ morphName: "照れ", weight: 0.9 }] },
+      STANDARD,
+    );
+    expect(result.emotions.happy).toEqual([{ morphName: "照れ", weight: 0.9 }]);
+  });
+
+  it("指定は部分的に混ぜず、まるごと置き換える", () => {
+    // どこまでが利用者の意思か分からなくなるため
+    const result = applyOverrides(base, { happy: [] }, STANDARD);
+    expect(result.emotions.happy).toEqual([]);
+    expect(canExpress(result, "happy")).toBe(false);
+  });
+
+  it("指定の無い感情は既定のまま残す", () => {
+    const result = applyOverrides(base, { happy: [] }, STANDARD);
+    expect(result.emotions.angry).toEqual(base.emotions.angry);
+  });
+
+  it("存在しないモーフ名は落とす", () => {
+    // モデルを差し替えたあとに古い設定が残っていても壊れない
+    const result = applyOverrides(
+      base,
+      { happy: [{ morphName: "存在しない", weight: 1 }, { morphName: "照れ", weight: 1 }] },
+      STANDARD,
+    );
+    expect(result.emotions.happy).toEqual([{ morphName: "照れ", weight: 1 }]);
+  });
+
+  it("口形とまばたきには触らない", () => {
+    const result = applyOverrides(base, { happy: [] }, STANDARD);
+    expect(result.visemes).toEqual(base.visemes);
+    expect(result.blink).toBe(base.blink);
+  });
+
+  it("元の割り当てを変更しない", () => {
+    const before = JSON.stringify(base.emotions);
+    applyOverrides(base, { happy: [{ morphName: "照れ", weight: 1 }] }, STANDARD);
+    expect(JSON.stringify(base.emotions)).toBe(before);
+  });
+
+  it("指定が空なら何も変わらない", () => {
+    expect(applyOverrides(base, {}, STANDARD)).toEqual(base);
   });
 });

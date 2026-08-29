@@ -57,12 +57,25 @@ export function ViewerHost(): React.JSX.Element {
           useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
 
-          // 覚えた位置があればそちらを優先する (要件 F-03-5)
           const current = useAppStore.getState();
-          const saved = current.characters.find(
+          const character = current.characters.find(
             (item) => item.id === current.activeCharacterId,
-          )?.cameraPreset;
-          if (saved != null) viewer.applyCameraState(saved);
+          );
+
+          // 覚えた位置があればそちらを優先する (要件 F-03-5)
+          if (character?.cameraPreset != null) {
+            viewer.applyCameraState(character.cameraPreset);
+          }
+
+          // 保存された割り当てがあれば反映する (PMX のみ)
+          if (character?.emotionMapping != null) {
+            const applied = viewer.setEmotionOverrides(
+              character.emotionMapping.entries,
+            );
+            if (applied !== null) {
+              useAppStore.getState().setModelDiagnostics(applied);
+            }
+          }
 
           // 描画がソフトウェアへ落ちていると実用に耐えない (要件 R-3)。
           // 落ちていること自体は何のエラーも出ないので知らせる。
@@ -119,6 +132,15 @@ export function ViewerHost(): React.JSX.Element {
             ?.idleSettings,
         (idle) => {
           if (idle !== undefined) viewer.setIdleSettings(idle);
+        },
+      ),
+      store.subscribe(
+        (current) =>
+          current.characters.find((item) => item.id === current.activeCharacterId)
+            ?.emotionMapping,
+        (mapping) => {
+          const applied = viewer.setEmotionOverrides(mapping?.entries ?? {});
+          if (applied !== null) useAppStore.getState().setModelDiagnostics(applied);
         },
       ),
     ];

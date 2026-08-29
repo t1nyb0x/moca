@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { CanonicalEmotion, EmotionCue } from "@/domain/emotion/types";
+import type { MorphTarget } from "@/domain/model/pmx-mapping";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
   advanceBlink,
@@ -42,7 +43,7 @@ import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 import { MorphApplier } from "./MorphApplier";
 import type { ModelAdapter, ModelLoadContext } from "./ModelAdapter";
-import { loadPmx } from "./PmxAdapter";
+import { loadPmx, PmxAdapter } from "./PmxAdapter";
 import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
@@ -191,12 +192,33 @@ export class Viewer {
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
     this.setFraming("upper");
 
+    return this.#diagnostics();
+  }
+
+  /**
+   * 感情ごとのモーフ割り当てを差し替える (PMX のみ)。
+   *
+   * VRM は表情が標準化されているので割り当ての概念が無く、何もしない。
+   */
+  setEmotionOverrides(
+    overrides: Readonly<Partial<Record<CanonicalEmotion, readonly MorphTarget[]>>>,
+  ): ModelDiagnostics | null {
+    const adapter = this.#adapter;
+    if (!(adapter instanceof PmxAdapter)) return null;
+    adapter.setEmotionOverrides(overrides);
+    return this.#diagnostics();
+  }
+
+  #diagnostics(): ModelDiagnostics | null {
+    const adapter = this.#adapter;
+    if (adapter === null) return null;
     return {
       textureCount: adapter.textureCount,
       expressionNames: adapter.availableMorphs(),
       expressibleEmotions: adapter.expressibleEmotions(),
       approximatedEmotions: adapter.approximatedEmotions(),
       rendererName: this.rendererInfo(),
+      emotionMorphs: adapter instanceof PmxAdapter ? adapter.emotionMorphs() : null,
     };
   }
 

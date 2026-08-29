@@ -536,6 +536,45 @@ textarea {
   font-weight: 600;
 }
 
+/* --- 表情の割り当て --- */
+
+.mapping {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mapping__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mapping__head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.mapping__spacer {
+  flex: 1;
+}
+
+.mapping__row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.mapping__row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.mapping__row input {
+  width: 5rem;
+}
+
 /* --- 設定ダイアログ --- */
 
 .dialog-backdrop {

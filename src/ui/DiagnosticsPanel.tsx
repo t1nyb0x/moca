@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { MorphMappingDialog } from "./MorphMappingDialog";
+
 import { useAppStore } from "@/app/store";
 import { logsDir } from "@/ipc";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
@@ -53,6 +55,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
 
+  const [mappingOpen, setMappingOpen] = useState(false);
   const [logPath, setLogPath] = useState<string | null>(null);
   useEffect(() => {
     void logsDir()
@@ -204,6 +207,20 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
       <p className="diag__note">
         押すと顔が変わるか確かめられます。変われば経路は生きています。
       </p>
+
+      {diagnostics?.emotionMorphs != null && (
+        <>
+          <p className="diag__note">
+            PMX はモーフ名がモデルごとに違うため、自動の推測が外れることが
+            あります。表情が変わらない感情があれば割り当てを直せます。
+          </p>
+          <button type="button" onClick={() => setMappingOpen(true)}>
+            表情の割り当てを直す
+          </button>
+        </>
+      )}
+
+      {mappingOpen && <MorphMappingDialog onClose={() => setMappingOpen(false)} />}
       <div className="diag__buttons">
         {CANONICAL_EMOTIONS.map((item) => {
           const supported = model === null || diagnostics === null || expressible.has(item);

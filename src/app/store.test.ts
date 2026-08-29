@@ -394,6 +394,7 @@ describe("診断", () => {
     expressionNames: ["neutral", "happy", "sad", "aa", "blink"],
     expressibleEmotions: ["neutral", "happy", "sad"] as const,
     approximatedEmotions: [] as const,
+    emotionMorphs: null,
     rendererName: "ANGLE (NVIDIA)",
   };
 

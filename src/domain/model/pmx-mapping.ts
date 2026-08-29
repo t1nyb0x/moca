@@ -102,6 +102,32 @@ export function resolveDefaultMapping(availableMorphs: readonly string[]): PmxMa
   return { emotions, visemes, blink: pick(BLINK_CANDIDATES, available) };
 }
 
+/**
+ * 既定の割り当てに利用者の指定を重ねる。
+ *
+ * 指定のある感情はまるごと置き換える。部分的に混ぜると、どこまでが
+ * 利用者の意思なのか分からなくなる。指定の無い感情は既定のまま残す。
+ *
+ * 存在しないモーフ名は落とす。モデルを差し替えたあとの古い設定が残って
+ * いても壊れないようにするため。
+ */
+export function applyOverrides(
+  base: PmxMapping,
+  overrides: Readonly<Partial<Record<CanonicalEmotion, readonly MorphTarget[]>>>,
+  availableMorphs: readonly string[],
+): PmxMapping {
+  const available = new Set(availableMorphs);
+  const emotions = { ...base.emotions } as Record<CanonicalEmotion, readonly MorphTarget[]>;
+
+  for (const emotion of CANONICAL_EMOTIONS) {
+    const specified = overrides[emotion];
+    if (specified === undefined) continue;
+    emotions[emotion] = specified.filter((target) => available.has(target.morphName));
+  }
+
+  return { ...base, emotions };
+}
+
 /** その感情を表現できるか。1 つでも当たっていれば表現できるとみなす。 */
 export function canExpress(mapping: PmxMapping, emotion: CanonicalEmotion): boolean {
   if (emotion === "neutral") return true;

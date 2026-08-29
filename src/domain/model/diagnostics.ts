@@ -1,4 +1,5 @@
 import type { CanonicalEmotion } from "@/domain/emotion/types";
+import type { MorphTarget } from "./pmx-mapping";
 
 /**
  * 読み込んだモデルの素性。
@@ -26,4 +27,11 @@ export type ModelDiagnostics = {
   readonly approximatedEmotions: readonly CanonicalEmotion[];
   /** 描画に使われている実装。ソフトウェア描画の検出に使う (要件 R-3)。 */
   readonly rendererName: string;
+  /**
+   * 感情ごとのモーフ割り当て。PMX のみ。VRM は表情が標準化されており
+   * 割り当ての概念が無いので null。
+   */
+  readonly emotionMorphs: Readonly<
+    Record<CanonicalEmotion, readonly MorphTarget[]>
+  > | null;
 };

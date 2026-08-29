@@ -6,8 +6,10 @@ import type { Viseme } from "@/domain/lipsync/viseme";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
 import type { WeightMap } from "@/domain/motion/types";
 import {
+  applyOverrides,
   canExpress as mappingCanExpress,
   resolveDefaultMapping,
+  type MorphTarget,
   type PmxMapping,
 } from "@/domain/model/pmx-mapping";
 import { resolveTexturePath } from "@/domain/model/texture-path";
@@ -33,7 +35,8 @@ export class PmxAdapter implements ModelAdapter {
 
   readonly #root: THREE.Group;
   readonly #meshes: THREE.SkinnedMesh[];
-  readonly #mapping: PmxMapping;
+  readonly #defaultMapping: PmxMapping;
+  #mapping: PmxMapping;
   readonly #chest: THREE.Bone | null;
   readonly #spine: THREE.Bone | null;
   readonly #head: THREE.Bone | null;
@@ -51,7 +54,8 @@ export class PmxAdapter implements ModelAdapter {
     this.#meshes = meshes;
     this.textureCount = textureCount;
     this.#dispose = dispose;
-    this.#mapping = resolveDefaultMapping(this.availableMorphs());
+    this.#defaultMapping = resolveDefaultMapping(this.availableMorphs());
+    this.#mapping = this.#defaultMapping;
 
     const bones = meshes[0]?.skeleton.bones ?? [];
     const find = (names: readonly string[]): THREE.Bone | null =>
@@ -76,6 +80,29 @@ export class PmxAdapter implements ModelAdapter {
       }
     }
     return [...names];
+  }
+
+  /** 既定の割り当て。UI が初期値として見せる。 */
+  defaultEmotionMorphs(): Readonly<Record<CanonicalEmotion, readonly MorphTarget[]>> {
+    return this.#defaultMapping.emotions;
+  }
+
+  /** 現在の割り当て。 */
+  emotionMorphs(): Readonly<Record<CanonicalEmotion, readonly MorphTarget[]>> {
+    return this.#mapping.emotions;
+  }
+
+  /**
+   * 利用者の割り当てを反映する。
+   *
+   * 差し替えの前に管理下のモーフを 0 に戻す。古い割り当てのモーフが
+   * 動かなくなったまま値を保持すると、表情が焼き付いて残る。
+   */
+  setEmotionOverrides(
+    overrides: Readonly<Partial<Record<CanonicalEmotion, readonly MorphTarget[]>>>,
+  ): void {
+    this.#writeMorphs(new Map());
+    this.#mapping = applyOverrides(this.#defaultMapping, overrides, this.availableMorphs());
   }
 
   canExpress(emotion: CanonicalEmotion): boolean {
