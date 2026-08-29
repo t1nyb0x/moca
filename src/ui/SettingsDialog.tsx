@@ -279,6 +279,29 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </small>
               </label>
               <label>
+                履歴に使うトークン数
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="空欄で既定 (8000)"
+                  value={provider.contextBudgetTokens ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value.trim();
+                    setProvider({
+                      ...provider,
+                      contextBudgetTokens:
+                        raw === "" ? null : Math.max(1, Number(raw) || 1),
+                    });
+                  }}
+                />
+                <small className="form__note">
+                  過去のやり取りを送る量の上限です。モデルの文脈長の半分ほどが
+                  目安になります。残り半分は今回の入力と応答のために空けて
+                  おきます。推論モデルは思考にも使うので、半分でも足りない
+                  ことがあります。
+                </small>
+              </label>
+              <label>
                 感情表現
                 <select
                   value={provider.emotionMode}

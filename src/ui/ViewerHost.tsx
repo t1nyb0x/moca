@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAppStore } from "@/app/store";
+import { isSoftwareRenderer } from "@/domain/model/renderer";
 import { toAssetUrl } from "@/ipc";
 import { Viewer } from "@/render/Viewer";
 import { ViewerToolbar } from "./ViewerToolbar";
@@ -54,7 +55,13 @@ export function ViewerHost(): React.JSX.Element {
           )?.cameraPreset;
           if (saved != null) viewer.applyCameraState(saved);
 
-          if (diagnostics.textureCount === 0) {
+          // 描画がソフトウェアへ落ちていると実用に耐えない (要件 R-3)。
+          // 落ちていること自体は何のエラーも出ないので知らせる。
+          if (isSoftwareRenderer(diagnostics.rendererName)) {
+            setWarning(
+              "GPU が使われていません。表示が重い場合は 3D を隠してお使いください。",
+            );
+          } else if (diagnostics.textureCount === 0) {
             setWarning(
               "テクスチャを読み込めませんでした。モデルが白く表示されます。",
             );

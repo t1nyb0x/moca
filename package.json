@@ -1,7 +1,7 @@
 {
   "name": "moca",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
-    "version:check": "node scripts/version.mjs"
+    "version:check": "node scripts/version.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",

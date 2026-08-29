@@ -20,8 +20,13 @@ export const DEFAULT_CONTEXT_WINDOW: ContextWindowOptions = {
   budgetTokens: DEFAULT_BUDGET_TOKENS,
 };
 
-/** モデルの文脈長から履歴用の予算を決める。半分を応答と入力に残す。 */
-export function budgetFromContextLength(contextLength: number | null): number {
+/**
+ * モデルの文脈長から、履歴に充てる妥当な予算を提案する。
+ *
+ * 半分を今回の入力と応答のために残す。推論モデルは思考にも使うので、
+ * 半分でも足りないことがある。設定画面で目安として示すために使う。
+ */
+export function suggestBudget(contextLength: number | null): number {
   if (contextLength === null || contextLength <= 0) return DEFAULT_BUDGET_TOKENS;
   return Math.floor(contextLength / 2);
 }
