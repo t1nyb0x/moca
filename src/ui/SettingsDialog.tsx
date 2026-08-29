@@ -31,8 +31,8 @@ function emptyProvider(): ProviderProfileDto {
     hasApiKey: false,
     temperature: null,
     topP: null,
-    // 推論モデルは思考にもトークンを使うため、本文が出るだけの余裕を持たせる
-    maxTokens: 4096,
+    // 既定は上限なし。蓋をすると推論モデルが思考だけで打ち切られる。
+    maxTokens: null,
     emotionMode: "tag",
     contextBudgetTokens: null,
   };
@@ -259,17 +259,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 最大トークン数
                 <input
                   type="number"
-                  value={provider.maxTokens}
-                  onChange={(event) =>
+                  min={1}
+                  placeholder="空欄で上限なし"
+                  value={provider.maxTokens ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value.trim();
                     setProvider({
                       ...provider,
-                      maxTokens: Number(event.target.value) || 1,
-                    })
-                  }
+                      maxTokens: raw === "" ? null : Math.max(1, Number(raw) || 1),
+                    });
+                  }}
                 />
                 <small className="form__note">
-                  推論モデル（Qwen3 系など）は思考にもトークンを使います。
-                  返事が出ない場合はここを増やしてください。
+                  生成する量の上限です。空欄なら指定せず、モデルが区切りの良い
+                  ところまで書きます。推論モデル（Qwen3 系など）は思考にも
+                  トークンを使うため、ここに小さな値を入れると本文が出ないまま
+                  打ち切られます。Anthropic は指定が必須なので、空欄のときは
+                  4096 を送ります。
                 </small>
               </label>
               <label>

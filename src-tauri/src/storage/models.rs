@@ -79,7 +79,9 @@ pub struct ProviderProfile {
     pub model: String,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
-    pub max_tokens: u32,
+    /// `None` は上限を指定しない。既存の記録は数値のまま読める。
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
     pub emotion_mode: EmotionMode,
     pub context_budget_tokens: Option<u32>,
 }

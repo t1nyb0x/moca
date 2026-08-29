@@ -12,6 +12,9 @@ use super::types::{ChatRequest, Delta, Role, StopReason, StreamItem, Usage};
 
 pub const API_VERSION: &str = "2023-06-01";
 
+/// Anthropic は max_tokens が必須。指定が無いときに補う値。
+pub const DEFAULT_MAX_TOKENS: u32 = 4096;
+
 fn role_str(role: Role) -> &'static str {
     match role {
         Role::User => "user",
@@ -39,7 +42,7 @@ pub fn build_body(request: &ChatRequest) -> Value {
         "model": request.model,
         "messages": messages,
         "stream": true,
-        "max_tokens": request.max_tokens,
+        "max_tokens": request.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS),
     });
 
     if let Some(system) = &request.system {
@@ -165,7 +168,7 @@ mod tests {
                 ChatMessage::user("お元気ですか"),
             ],
             model: "claude-opus-5".to_owned(),
-            max_tokens: 2048,
+            max_tokens: Some(2048),
             temperature: None,
             top_p: None,
         }
@@ -198,6 +201,14 @@ mod tests {
     fn max_tokens_は必須なので常に入る() {
         let body = build_body(&request());
         assert_eq!(body["max_tokens"], 2048);
+    }
+
+    #[test]
+    fn 上限の指定が無くても既定値を送る() {
+        // Anthropic は max_tokens が必須なので省略できない
+        let mut req = request();
+        req.max_tokens = None;
+        assert_eq!(build_body(&req)["max_tokens"], DEFAULT_MAX_TOKENS);
     }
 
     #[test]

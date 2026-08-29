@@ -268,7 +268,7 @@ mod tests {
             system: Some("あなたは倉本千奈です".to_owned()),
             messages: vec![ChatMessage::user("こんにちは")],
             model: "test-model".to_owned(),
-            max_tokens: 256,
+            max_tokens: Some(256),
             temperature: None,
             top_p: None,
         }

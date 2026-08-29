@@ -22,7 +22,8 @@ pub struct ProviderProfileDto {
     pub has_api_key: bool,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
-    pub max_tokens: u32,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
     pub emotion_mode: EmotionMode,
     pub context_budget_tokens: Option<u32>,
 }
@@ -97,7 +98,7 @@ mod tests {
             model: "llama3.2".to_owned(),
             temperature: Some(0.7),
             top_p: None,
-            max_tokens: 1024,
+            max_tokens: Some(1024),
             emotion_mode: EmotionMode::Tag,
             context_budget_tokens: None,
         }

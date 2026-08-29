@@ -47,7 +47,12 @@ pub struct ChatRequest {
     pub system: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub model: String,
-    pub max_tokens: u32,
+    /// 生成量の上限。`None` は指定しない（モデルが自然に終わるまで）。
+    ///
+    /// Anthropic だけは必須なのでアダプタ側で既定値を補う。OpenAI 互換と
+    /// Gemini では省略でき、省略したほうがよい。推論モデルは思考にも
+    /// トークンを使うため、蓋をすると本文が出ないまま打ち切られる。
+    pub max_tokens: Option<u32>,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
 }

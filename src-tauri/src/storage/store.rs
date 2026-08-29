@@ -280,7 +280,7 @@ mod tests {
             model: "llama3.2".to_owned(),
             temperature: None,
             top_p: None,
-            max_tokens: 1024,
+            max_tokens: Some(1024),
             emotion_mode: EmotionMode::Tag,
             context_budget_tokens: None,
         }

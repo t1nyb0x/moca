@@ -34,7 +34,10 @@ pub fn build_body(request: &ChatRequest) -> Value {
         })
         .collect();
 
-    let mut generation_config = json!({ "maxOutputTokens": request.max_tokens });
+    let mut generation_config = json!({});
+    if let Some(max_tokens) = request.max_tokens {
+        generation_config["maxOutputTokens"] = json!(max_tokens);
+    }
     if let Some(temperature) = request.temperature {
         generation_config["temperature"] = json!(temperature);
     }
@@ -171,7 +174,7 @@ mod tests {
                 ChatMessage::assistant("ごきげんよう"),
             ],
             model: "gemini-2.5-flash".to_owned(),
-            max_tokens: 1024,
+            max_tokens: Some(1024),
             temperature: Some(0.5),
             top_p: None,
         }
@@ -209,6 +212,15 @@ mod tests {
         assert_eq!(body["generationConfig"]["maxOutputTokens"], 1024);
         assert_eq!(body["generationConfig"]["temperature"], 0.5);
         assert!(body["generationConfig"].get("topP").is_none());
+    }
+
+    #[test]
+    fn 上限の指定が無ければ出さない() {
+        let mut req = request();
+        req.max_tokens = None;
+        assert!(build_body(&req)["generationConfig"]
+            .get("maxOutputTokens")
+            .is_none());
     }
 
     #[test]

@@ -311,7 +311,7 @@ mod tests {
             has_api_key: false,
             temperature: None,
             top_p: None,
-            max_tokens: 256,
+            max_tokens: Some(256),
             emotion_mode: EmotionMode::Tag,
             context_budget_tokens: None,
         }

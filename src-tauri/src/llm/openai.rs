@@ -38,12 +38,15 @@ pub fn build_body(request: &ChatRequest) -> Value {
         "model": request.model,
         "messages": messages,
         "stream": true,
-        "max_tokens": request.max_tokens,
         // 公式 OpenAI はこれが無いと usage を送らない。ローカルの実装は
         // 未知のフィールドを無視するので付けたままでよい。
         "stream_options": { "include_usage": true },
     });
 
+    // 指定が無ければフィールドごと出さない。null を送ると弾く実装がある。
+    if let Some(max_tokens) = request.max_tokens {
+        body["max_tokens"] = json!(max_tokens);
+    }
     if let Some(temperature) = request.temperature {
         body["temperature"] = json!(temperature);
     }
@@ -149,7 +152,7 @@ mod tests {
             system: Some("あなたは親切な助手です".to_owned()),
             messages: vec![ChatMessage::user("こんにちは")],
             model: "gpt-4o-mini".to_owned(),
-            max_tokens: 1024,
+            max_tokens: Some(1024),
             temperature: Some(0.7),
             top_p: None,
         }
@@ -177,6 +180,14 @@ mod tests {
         let body = build_body(&request());
         assert_eq!(body["temperature"], 0.7);
         assert!(body.get("top_p").is_none());
+    }
+
+    #[test]
+    fn 上限の指定が無ければフィールドごと出さない() {
+        // null を送ると弾く実装があるため
+        let mut req = request();
+        req.max_tokens = None;
+        assert!(build_body(&req).get("max_tokens").is_none());
     }
 
     #[test]

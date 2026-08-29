@@ -6,4 +6,4 @@ export type ProviderProfileDto = { id: string, name: string, kind: ProviderKind,
 /**
  * 設定済みか否かだけを伝える。鍵そのものは決して返さない。
  */
-hasApiKey: boolean, temperature: number | null, topP: number | null, maxTokens: number, emotionMode: EmotionMode, contextBudgetTokens: number | null, };
+hasApiKey: boolean, temperature: number | null, topP: number | null, maxTokens: number | null, emotionMode: EmotionMode, contextBudgetTokens: number | null, };

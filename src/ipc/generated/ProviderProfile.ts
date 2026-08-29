@@ -2,4 +2,8 @@
 import type { EmotionMode } from "./EmotionMode";
 import type { ProviderKind } from "./ProviderKind";
 
-export type ProviderProfile = { id: string, name: string, kind: ProviderKind, baseUrl: string, model: string, temperature: number | null, topP: number | null, maxTokens: number, emotionMode: EmotionMode, contextBudgetTokens: number | null, };
+export type ProviderProfile = { id: string, name: string, kind: ProviderKind, baseUrl: string, model: string, temperature: number | null, topP: number | null, 
+/**
+ * `None` は上限を指定しない。既存の記録は数値のまま読める。
+ */
+maxTokens: number | null, emotionMode: EmotionMode, contextBudgetTokens: number | null, };
