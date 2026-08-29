@@ -119,6 +119,81 @@ textarea {
   display: flex;
 }
 
+/* --- 会話の一覧 --- */
+
+.history {
+  flex: 0 0 15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+  overflow-y: auto;
+}
+
+.history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history__header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.history__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.history__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.history__item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.history__open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+}
+
+.history__item--on .history__open {
+  border-color: var(--accent);
+  background: var(--user-bubble);
+}
+
+.history__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.history__delete {
+  flex: 0 0 auto;
+  font-size: 0.82em;
+}
+
 /* --- 3D ビュー --- */
 
 .viewer {

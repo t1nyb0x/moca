@@ -18,6 +18,8 @@ vi.mock("@/ipc", () => ({
   characterUpsert: vi.fn(),
   modelPick: vi.fn(),
   modelOpen: vi.fn(),
+  conversationsIndex: vi.fn(),
+  conversationDelete: vi.fn(),
 }));
 
 import * as ipc from "@/ipc";
@@ -105,6 +107,112 @@ beforeEach(() => {
   mocked.chatCancel.mockResolvedValue(undefined);
   mocked.characterUpsert.mockImplementation(async (profile) => profile);
   mocked.settingsSet.mockResolvedValue(undefined);
+  mocked.conversationsIndex.mockResolvedValue([]);
+  mocked.conversationDelete.mockResolvedValue(undefined);
+});
+
+describe("会話の一覧", () => {
+  const summary = (id: string, title: string) => ({
+    id,
+    characterId: "ch1",
+    title,
+    updatedAt: "2026-08-29T00:00:00Z",
+    messageCount: 2,
+  });
+
+  it("選択中のキャラクターの分だけ読む", async () => {
+    mocked.conversationsIndex.mockResolvedValue([summary("c1", "きのう")]);
+    const instance = store();
+
+    await instance.getState().refreshConversations();
+
+    expect(mocked.conversationsIndex).toHaveBeenCalledWith("ch1");
+    expect(instance.getState().conversations).toHaveLength(1);
+  });
+
+  it("キャラクター未選択なら空にする", async () => {
+    const instance = store();
+    instance.setState({
+      activeCharacterId: null,
+      conversations: [summary("c1", "のこり")],
+    });
+
+    await instance.getState().refreshConversations();
+
+    expect(instance.getState().conversations).toEqual([]);
+    expect(mocked.conversationsIndex).not.toHaveBeenCalled();
+  });
+
+  it("読み込みに失敗したらエラーとして保持する", async () => {
+    mocked.conversationsIndex.mockRejectedValue({
+      kind: "io",
+      message: "読めません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+    await instance.getState().refreshConversations();
+    expect(instance.getState().error?.kind).toBe("io");
+  });
+
+  it("削除すると一覧から消える", async () => {
+    const instance = store();
+    instance.setState({ conversations: [summary("c1", "あ"), summary("c2", "い")] });
+
+    await instance.getState().deleteConversation("c1");
+
+    expect(mocked.conversationDelete).toHaveBeenCalledWith("c1");
+    expect(instance.getState().conversations.map((item) => item.id)).toEqual(["c2"]);
+  });
+
+  it("開いている会話を削除したら画面も離す", async () => {
+    mocked.conversationGet.mockResolvedValue({
+      id: "c1",
+      characterId: "ch1",
+      title: "いま開いている",
+      messages: [],
+      schemaVersion: 1,
+      createdAt: "2026-08-29T00:00:00Z",
+      updatedAt: "2026-08-29T00:00:00Z",
+    });
+    const instance = store();
+    await instance.getState().loadConversation("c1");
+    instance.setState({ conversations: [summary("c1", "いま開いている")] });
+
+    await instance.getState().deleteConversation("c1");
+
+    expect(instance.getState().conversation).toBeNull();
+  });
+
+  it("削除に失敗したら一覧を変えない", async () => {
+    mocked.conversationDelete.mockRejectedValue({
+      kind: "io",
+      message: "消せません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+    instance.setState({ conversations: [summary("c1", "あ")] });
+
+    await instance.getState().deleteConversation("c1");
+
+    expect(instance.getState().conversations).toHaveLength(1);
+    expect(instance.getState().error?.kind).toBe("io");
+  });
+
+  it("応答を保存したら一覧を読み直す", async () => {
+    respondWith(["はい"]);
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(mocked.conversationsIndex).toHaveBeenCalledWith("ch1");
+  });
+
+  it("本文が空なら保存しないので読み直しもしない", async () => {
+    respondWith([]);
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(mocked.conversationsIndex).not.toHaveBeenCalled();
+  });
 });
 
 describe("モデル", () => {

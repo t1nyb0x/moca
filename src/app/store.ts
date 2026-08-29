@@ -5,6 +5,7 @@ import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
+import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
 import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
@@ -47,6 +48,8 @@ export type AppState = {
   activeCharacterId: string | null;
 
   conversation: Conversation | null;
+  /** 選択中のキャラクターの会話一覧。本体は開くまで読まない (ADR-0010)。 */
+  conversations: ConversationSummary[];
   status: ChatStatus;
   /** 生成中の応答。確定したら conversation へ移す。 */
   streamingText: string;
@@ -74,6 +77,8 @@ export type AppState = {
   persistModelPath: (path: string | null) => Promise<void>;
   newConversation: () => void;
   loadConversation: (id: string) => Promise<void>;
+  refreshConversations: () => Promise<void>;
+  deleteConversation: (id: string) => Promise<void>;
   send: (input: string) => Promise<void>;
   cancel: () => Promise<void>;
   regenerate: () => Promise<void>;
@@ -167,6 +172,7 @@ export function createAppStore(): UseBoundStore<
     activeCharacterId: null,
 
     conversation: null,
+    conversations: [],
     status: "idle",
     streamingText: "",
     thinkingText: "",
@@ -225,6 +231,7 @@ export function createAppStore(): UseBoundStore<
           activeCharacterId: settings.activeCharacterId,
           showViewer: settings.showViewer,
         });
+        await get().refreshConversations();
 
         // 前回のモデルを復元する (要件 F-01-6)。失敗しても本体は動かす。
         const active = characters.find(
@@ -301,6 +308,8 @@ export function createAppStore(): UseBoundStore<
     setActiveCharacter: async (id) => {
       set({ activeCharacterId: id, conversation: null, emotion: NEUTRAL, model: null });
 
+      await get().refreshConversations();
+
       const character = get().characters.find((item) => item.id === id);
       if (character?.modelPath != null) {
         await get().openModel(character.modelPath);
@@ -330,10 +339,44 @@ export function createAppStore(): UseBoundStore<
     loadConversation: async (id) => {
       try {
         const conversation = await ipc.conversationGet(id);
-        set({ conversation, streamingText: "", error: null, emotion: NEUTRAL });
+        set({
+          conversation,
+          streamingText: "",
+          thinkingText: "",
+          error: null,
+          emotion: NEUTRAL,
+        });
       } catch (error) {
         set({ error: error as CommandError });
       }
+    },
+
+    refreshConversations: async () => {
+      const characterId = get().activeCharacterId;
+      if (characterId === null) {
+        set({ conversations: [] });
+        return;
+      }
+      try {
+        set({ conversations: await ipc.conversationsIndex(characterId) });
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    deleteConversation: async (id) => {
+      try {
+        await ipc.conversationDelete(id);
+      } catch (error) {
+        set({ error: error as CommandError });
+        return;
+      }
+      set((current) => ({
+        conversations: current.conversations.filter((item) => item.id !== id),
+        // 開いている会話を消したら画面も離す
+        conversation:
+          current.conversation?.id === id ? null : current.conversation,
+      }));
     },
 
     send: async (input) => {
@@ -455,6 +498,7 @@ export function createAppStore(): UseBoundStore<
         // 保存はストリームの解決後に一度だけ (IPC 契約 C-2)
         if (assembler.display !== "") {
           await ipc.conversationSave(finished);
+          await get().refreshConversations();
         }
       } catch (error) {
         // 送った内容は残す。やり直せるようにするため。

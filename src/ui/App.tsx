@@ -5,6 +5,7 @@ import { ChatPanel } from "./ChatPanel";
 import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { ConversationList } from "./ConversationList";
 
 /**
  * アプリケーションの外枠。
@@ -27,6 +28,7 @@ export function App(): React.JSX.Element {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     void bootstrap();
@@ -85,6 +87,13 @@ export function App(): React.JSX.Element {
 
         <button
           type="button"
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-pressed={historyOpen}
+        >
+          会話
+        </button>
+        <button
+          type="button"
           onClick={newConversation}
           disabled={status === "streaming"}
         >
@@ -109,6 +118,7 @@ export function App(): React.JSX.Element {
       )}
 
       <main className="app__main">
+        {historyOpen && <ConversationList onClose={() => setHistoryOpen(false)} />}
         {/* モデル未設定でも、3D を隠していてもチャットは完全に成立する (要件 F-02) */}
         {model !== null && showViewer && <ViewerHost />}
         <ChatPanel />
