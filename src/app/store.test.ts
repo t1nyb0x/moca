@@ -33,6 +33,7 @@ const settings: Settings = {
   logLevel: "info",
   lipSyncCharsPerSecond: 10,
   showViewer: true,
+  backgroundColor: null,
 };
 
 const provider: ProviderProfileDto = {
@@ -480,6 +481,77 @@ describe("診断", () => {
     expect(preview.emotion).toBe("sad");
     // 発話の列は動かさない
     expect(instance.getState().speech.seq).toBe(0);
+  });
+});
+
+describe("カメラと背景 (要件 F-03)", () => {
+  const camera = {
+    position: [0, 1.2, 1.5] as [number, number, number],
+    target: [0, 1.1, 0] as [number, number, number],
+  };
+
+  it("カメラ位置をキャラクターへ保存する", async () => {
+    const instance = store();
+    await instance.getState().saveCameraState(camera);
+
+    expect(
+      instance.getState().characters.find((item) => item.id === "ch1")?.cameraPreset,
+    ).toEqual(camera);
+    expect(mocked.characterUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ cameraPreset: camera }),
+    );
+  });
+
+  it("null を渡すと覚えた位置を忘れる", async () => {
+    const instance = store();
+    await instance.getState().saveCameraState(camera);
+    await instance.getState().saveCameraState(null);
+
+    expect(
+      instance.getState().characters.find((item) => item.id === "ch1")?.cameraPreset,
+    ).toBeNull();
+  });
+
+  it("キャラクター未選択なら保存しない", async () => {
+    const instance = store();
+    instance.setState({ activeCharacterId: null });
+    await instance.getState().saveCameraState(camera);
+    expect(mocked.characterUpsert).not.toHaveBeenCalled();
+  });
+
+  it("背景色を設定へ保存する", async () => {
+    const instance = store();
+    await instance.getState().setBackgroundColor("#123456");
+
+    expect(instance.getState().settings?.backgroundColor).toBe("#123456");
+    expect(mocked.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#123456" }),
+    );
+  });
+
+  it("null を渡すと既定色へ戻す", async () => {
+    const instance = store();
+    await instance.getState().setBackgroundColor("#123456");
+    await instance.getState().setBackgroundColor(null);
+    expect(instance.getState().settings?.backgroundColor).toBeNull();
+  });
+
+  it("設定が未読込なら保存を試みない", async () => {
+    const instance = createAppStore();
+    await instance.getState().setBackgroundColor("#123456");
+    expect(mocked.settingsSet).not.toHaveBeenCalled();
+  });
+
+  it("保存に失敗してもエラーとして保持する", async () => {
+    mocked.settingsSet.mockRejectedValue({
+      kind: "io",
+      message: "書けません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+    await instance.getState().setBackgroundColor("#123456");
+    expect(instance.getState().error?.kind).toBe("io");
   });
 });
 

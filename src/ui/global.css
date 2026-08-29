@@ -213,6 +213,43 @@ textarea {
   display: block;
 }
 
+.vtool {
+  position: absolute;
+  inset: auto auto 0.6rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.vtool__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.vtool button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85em;
+}
+
+.vtool__color {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85em;
+}
+
+.vtool__color input {
+  width: 2.2rem;
+  height: 1.5rem;
+  padding: 0;
+}
+
 .viewer__failure {
   position: absolute;
   inset: auto 0.8rem 0.8rem;
