@@ -16,8 +16,10 @@ import { useModelDrop } from "./useModelDrop";
  */
 export function App(): React.JSX.Element {
   const characters = useAppStore((state) => state.characters);
+  const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
   const setActiveCharacter = useAppStore((state) => state.setActiveCharacter);
+  const setProvider = useAppStore((state) => state.setProvider);
   const newConversation = useAppStore((state) => state.newConversation);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const status = useAppStore((state) => state.status);
@@ -32,6 +34,9 @@ export function App(): React.JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false);
   const dropping = useModelDrop();
   const [licenseAcknowledged, setLicenseAcknowledged] = useState(false);
+
+  const character = characters.find((item) => item.id === activeCharacterId);
+  const provider = providers.find((item) => item.id === character?.providerId);
 
   useEffect(() => {
     void bootstrap();
@@ -57,6 +62,26 @@ export function App(): React.JSX.Element {
             </option>
           ))}
         </select>
+
+        {/*
+          接続先の切り替え。会話を保ったまま差し替えられる。キャラクターの
+          切り替えと違い、会話・表情・モデルは作り直さない。
+        */}
+        {character !== undefined && (
+          <select
+            className="app__provider"
+            aria-label="接続先"
+            value={character.providerId}
+            disabled={status === "streaming"}
+            onChange={(event) => void setProvider(event.target.value)}
+          >
+            {providers.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         <span className="app__spacer" />
 
@@ -139,6 +164,18 @@ export function App(): React.JSX.Element {
       {model?.oversized === true && (
         <p className="banner banner--notice" role="status">
           このモデルはファイルが大きめです。表示が重い場合は 3D を隠してお使いください。
+        </p>
+      )}
+
+      {/*
+        emotionMode は接続先ごとの設定で、既定は tag。off は規約に従えない
+        モデルのための逃げ道 (ADR-0003)。切り替えで黙って表情が止まるのが
+        一番困るので、その状態であることだけ伝える。
+      */}
+      {provider?.emotionMode === "off" && (
+        <p className="banner banner--notice" role="status">
+          この接続先は感情タグが無効です。返答に応じた表情の変化は起きません。
+          設定の接続先から切り替えられます。
         </p>
       )}
 

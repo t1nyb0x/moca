@@ -468,6 +468,77 @@ describe("診断", () => {
     expect(instance.getState().error?.kind).toBe("io");
   });
 
+  describe("接続先の切り替え", () => {
+    const other: ProviderProfileDto = {
+      ...provider,
+      id: "p2",
+      name: "Anthropic",
+      kind: "anthropic",
+      model: "claude-opus-4",
+      emotionMode: "off",
+    };
+
+    function withBoth() {
+      const instance = store();
+      instance.setState({ providers: [provider, other] });
+      return instance;
+    }
+
+    it("選択中のキャラクターへ保存する", async () => {
+      const instance = withBoth();
+      await instance.getState().setProvider("p2");
+
+      expect(
+        instance.getState().characters.find((item) => item.id === "ch1")?.providerId,
+      ).toBe("p2");
+      expect(mocked.characterUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: "p2" }),
+      );
+    });
+
+    it("会話を保ったまま切り替える", async () => {
+      // これがこの機能の目的。setActiveCharacter と違い会話を作り直さない
+      respondWith(["ごきげんよう。"]);
+      const instance = withBoth();
+      await instance.getState().send("やあ");
+      const before = instance.getState().conversation;
+
+      await instance.getState().setProvider("p2");
+
+      expect(instance.getState().conversation).toBe(before);
+    });
+
+    it("知らない接続先は無視する", async () => {
+      const instance = withBoth();
+      await instance.getState().setProvider("p9");
+      expect(mocked.characterUpsert).not.toHaveBeenCalled();
+    });
+
+    it("キャラクター未選択なら何もしない", async () => {
+      const instance = withBoth();
+      instance.setState({ activeCharacterId: null });
+      await instance.getState().setProvider("p2");
+      expect(mocked.characterUpsert).not.toHaveBeenCalled();
+    });
+
+    it("保存に失敗しても画面には反映したままにする", async () => {
+      // 切り替えの手応えを優先する
+      mocked.characterUpsert.mockRejectedValue({
+        kind: "io",
+        message: "書けません",
+        retryAfterMs: null,
+        status: null,
+      });
+      const instance = withBoth();
+      await instance.getState().setProvider("p2");
+
+      expect(
+        instance.getState().characters.find((item) => item.id === "ch1")?.providerId,
+      ).toBe("p2");
+      expect(instance.getState().error?.kind).toBe("io");
+    });
+  });
+
   it("感情を手で指定できる", () => {
     const instance = store();
     instance.getState().previewEmotion("angry");
@@ -649,6 +720,35 @@ describe("send", () => {
     expect(assistant?.rawContent).toContain("[happy]");
     expect(assistant?.emotions).toHaveLength(2);
     expect(instance.getState().emotion.emotion).toBe("sad");
+  });
+
+  it("返答に使ったモデルを記録する", async () => {
+    // 切り替えて試し比べたとき、どれが書いたかを後から辿れるようにする
+    respondWith(["ごきげんよう。"]);
+    const instance = store();
+
+    await instance.getState().send("やあ");
+
+    const messages = instance.getState().conversation?.messages ?? [];
+    expect(messages[1]?.model).toBe("llama3.2");
+    // 利用者の発言は誰も生成していない
+    expect(messages[0]?.model).toBeNull();
+  });
+
+  it("切り替えた後の返答には新しいモデルが載る", async () => {
+    const other: ProviderProfileDto = { ...provider, id: "p2", model: "claude-opus-4" };
+    respondWith(["ごきげんよう。"]);
+    const instance = store();
+    instance.setState({ providers: [provider, other] });
+
+    await instance.getState().send("やあ");
+    await instance.getState().setProvider("p2");
+    await instance.getState().send("もう一度");
+
+    const messages = instance.getState().conversation?.messages ?? [];
+    // 過去の返答は書いた当時のモデルのまま
+    expect(messages[1]?.model).toBe("llama3.2");
+    expect(messages[3]?.model).toBe("claude-opus-4");
   });
 
   it("発話の断片を順に積む", async () => {

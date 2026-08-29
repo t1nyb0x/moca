@@ -317,6 +317,24 @@ textarea {
   letter-spacing: 0.04em;
 }
 
+.tag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+
+.bubble__model {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.72em;
+  letter-spacing: 0.02em;
+}
+
 .bubble__caret {
   display: inline-block;
   width: 0.5em;
@@ -719,6 +737,12 @@ textarea {
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-bottom: 0.35rem;
+}
+
+.picker__item small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82em;
 }
 
 .picker__item--on {

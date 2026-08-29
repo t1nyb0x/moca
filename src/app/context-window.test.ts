@@ -13,6 +13,7 @@ function message(content: string, index: number): Message {
     rawContent: null,
     emotions: null,
     createdAt: "2026-08-29T00:00:00Z",
+    model: null,
   };
 }
 

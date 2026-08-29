@@ -4,9 +4,9 @@ VRM / PMX 形式の 3D キャラクターモデルを表示し、そのキャラ
 
 Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外部 LLM API（Anthropic / OpenAI / Google Gemini）に対応する。
 
-現在の版は 0.4.0。VRM / PMX の表示、LLM との会話、感情に応じた表情変化、
-音声での読み上げと音声駆動リップシンクまで動作する。PMX は表示だけの
-実験的対応と位置づけている。
+現在の版は 0.5.0。VRM / PMX の表示、LLM との会話、感情に応じた表情変化、
+音声での読み上げと音声駆動リップシンク、接続先の切り替えまで動作する。
+PMX は表示だけの実験的対応と位置づけている。
 できること・できないことは [ロードマップ](docs/roadmap.md) を参照。
 
 ## 文書
@@ -119,6 +119,29 @@ cmd.exe /c "set PATH=%USERPROFILE%\.cargo\bin;%PATH% && cd /d C:\dev\moca && car
 INFO  moca: データディレクトリ path=...
 DEBUG moca::commands: 設定の読み出し
 ```
+
+### 接続先を設定する
+
+設定の「接続先を追加」から。種別と待ち受け先の対応は次のとおり。
+
+| 接続先 | 種別 | 接続先 URL |
+|---|---|---|
+| Ollama | OpenAI 互換 | `http://localhost:11434`（既定値） |
+| LM Studio | OpenAI 互換 | `http://localhost:1234` |
+| llama.cpp server | OpenAI 互換 | `http://localhost:8080` |
+| OpenAI | OpenAI 互換 | `https://api.openai.com` |
+| Anthropic | Anthropic | `https://api.anthropic.com` |
+| Google Gemini | Gemini | `https://generativelanguage.googleapis.com` |
+
+ローカルサーバーの 3 つは、設定画面の候補ボタンからも入れられる。
+
+**入れるのはホストとポートまで。** `/v1/chat/completions` などの経路は送信時
+に付く（`src-tauri/src/llm/http.rs` の `chat_url`）。`/v1` まで書くと
+`/v1/v1/chat/completions` になって繋がらない。末尾のスラッシュは吸収される。
+
+「接続を確かめる」を押すと `/v1/models` を叩いてモデル一覧を取り込む。取れた
+候補から選べば、モデル名を手で書かずに済む。LM Studio は Developer タブから
+サーバーを起動しておくこと。ポートを既定から変えている場合はそれに合わせる。
 
 ### 音声で読み上げる
 
