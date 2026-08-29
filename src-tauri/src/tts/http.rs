@@ -452,4 +452,40 @@ mod tests {
             "http://localhost:53000/v1/voice/casts"
         );
     }
+
+    /// 実物の shirataki へ繋いで往復を確かめる。
+    ///
+    /// wiremock は自分が思う形しか返さないので、思い込みごと通ってしまう。
+    /// サーバーを立てて `cargo test -- --ignored shirataki` で確認する。
+    #[tokio::test]
+    #[ignore = "shirataki と CeVIO AI の起動が必要"]
+    async fn 実物の_shirataki_から音声を得られる() {
+        let tts = HttpSynthesizer::new(TtsKind::Shirataki, "http://127.0.0.1:53000").unwrap();
+
+        let casts = tts.speakers().await.expect("キャスト一覧");
+        assert!(!casts.is_empty(), "キャストが一人もいない");
+
+        let cast = casts[0].id.clone();
+        let axes = tts.emotion_axes(&cast).await.expect("感情成分");
+        assert!(!axes.is_empty(), "感情成分が空");
+
+        let mut components = std::collections::BTreeMap::new();
+        components.insert(axes[0].clone(), 0.9);
+
+        let wav = tts
+            .synthesize(SynthesizeRequest {
+                text: "こんにちは。".to_string(),
+                speaker: cast,
+                preset: VoicePreset {
+                    components,
+                    ..VoicePreset::default()
+                },
+            })
+            .await
+            .expect("音声合成");
+
+        assert!(wav.len() > 1024, "音声が小さすぎる: {} バイト", wav.len());
+        assert_eq!(&wav[0..4], b"RIFF", "WAV になっていない");
+        assert_eq!(&wav[8..12], b"WAVE", "WAV になっていない");
+    }
 }
