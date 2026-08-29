@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
+
 import { useAppStore } from "@/app/store";
+import { logsDir } from "@/ipc";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
 import { groupByRole, ROLES, type ExpressionRole } from "@/domain/model/expression-roles";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
@@ -48,6 +51,13 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const characters = useAppStore((state) => state.characters);
   const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
+
+  const [logPath, setLogPath] = useState<string | null>(null);
+  useEffect(() => {
+    void logsDir()
+      .then(setLogPath)
+      .catch(() => setLogPath(null));
+  }, []);
 
   const expressible = new Set(diagnostics?.expressibleEmotions ?? []);
   const approximated = new Set(diagnostics?.approximatedEmotions ?? []);
@@ -116,6 +126,15 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
             まばたき・視線はそれぞれの仕組みが自動で動かしています。
           </p>
         </details>
+      )}
+
+      {logPath !== null && (
+        <p className="diag__note">
+          ログの保存先
+          <span className="diag__path">{logPath}</span>
+          不具合のご報告には、この場所の <code>moca.log</code> を添えていただけると
+          原因が追えます。
+        </p>
       )}
 
       <p

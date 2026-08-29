@@ -103,7 +103,8 @@ fn open_path(app: &AppHandle, path: PathBuf) -> Result<ModelHandle> {
     tracing::info!(
         target: "moca::commands",
         format = ?handle.format,
-        size = handle.size_bytes,
+        // バイト数は整数で出す。f64 のまま出すと 31209924.0 になって読みにくい
+        size = handle.size_bytes as u64,
         "モデルを開いた"
     );
     Ok(handle)
