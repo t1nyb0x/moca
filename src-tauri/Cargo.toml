@@ -43,6 +43,9 @@ keyring = { version = "3", features = ["windows-native"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 
+# IPC の型は Rust 側を正とし、TS 側は生成する (docs/ipc-contract.md 1.2)
+ts-rs = "12"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 wiremock = "0.6"

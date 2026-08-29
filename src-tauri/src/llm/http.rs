@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use ts_rs::TS;
 
 use crate::secret::Secret;
 
@@ -19,8 +20,9 @@ use super::stream::drive;
 use super::types::{ChatRequest, ChatResult, Delta, ModelInfo};
 use super::{anthropic, gemini, openai};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum ProviderKind {
     /// Ollama / LM Studio / llama.cpp / OpenAI 公式
     OpenaiCompatible,

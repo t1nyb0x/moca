@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::llm::http::ProviderKind;
 
@@ -24,15 +25,17 @@ pub fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum ModelFormat {
     Vrm,
     Pmx,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum EmotionMode {
     /// 感情タグを注入し、解析する
     Tag,
@@ -40,8 +43,9 @@ pub enum EmotionMode {
     Off,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Settings {
     #[serde(default = "schema_version")]
     pub schema_version: u32,
@@ -64,8 +68,9 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct ProviderProfile {
     pub id: String,
     pub name: String,
@@ -79,15 +84,17 @@ pub struct ProviderProfile {
     pub context_budget_tokens: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct CameraState {
     pub position: [f64; 3],
     pub target: [f64; 3],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct IdleSettings {
     pub blink: bool,
     pub saccade: bool,
@@ -108,8 +115,9 @@ impl Default for IdleSettings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct MorphTarget {
     pub morph_name: String,
     pub weight: f64,
@@ -119,16 +127,18 @@ pub struct MorphTarget {
 ///
 /// VRM は恒等マッピングで足りるので通常は None。PMX はモーフ名に標準が
 /// 無いためモデルごとに必須になる (ADR-0004)。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct EmotionMapping {
     pub format: ModelFormat,
     pub model_id: Option<String>,
     pub entries: HashMap<String, Vec<MorphTarget>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct CharacterProfile {
     pub id: String,
     pub name: String,
@@ -147,23 +157,26 @@ pub struct CharacterProfile {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum MessageRole {
     User,
     Assistant,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct EmotionSpan {
     pub offset: u32,
     pub emotion: String,
     pub intensity: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Message {
     pub role: MessageRole,
     /// 感情タグを除去済みの本文。表示に使う。
@@ -174,8 +187,9 @@ pub struct Message {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Conversation {
     pub id: String,
     pub character_id: String,
@@ -188,8 +202,9 @@ pub struct Conversation {
 }
 
 /// 一覧表示用。全会話を読まずに済ませるために本体と分けて持つ。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct ConversationSummary {
     pub id: String,
     pub character_id: String,

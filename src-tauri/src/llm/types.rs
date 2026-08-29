@@ -5,6 +5,7 @@
 //! 差異の一覧は docs/ipc-contract.md 7.4。
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// 会話上の役割。system はメッセージ列に含めない。
 ///
@@ -51,8 +52,9 @@ pub struct ChatRequest {
     pub top_p: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
@@ -62,15 +64,17 @@ pub struct Usage {
 ///
 /// エラーは Channel に流さず、コマンドの戻り値でのみ表現する。
 /// 経路が 2 本あるとフロント側の状態管理が壊れる (docs/ipc-contract.md 2.6)。
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
 pub enum Delta {
     Text { value: String },
     Usage(Usage),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum StopReason {
     EndTurn,
     MaxTokens,
@@ -93,15 +97,17 @@ pub enum StreamItem {
     Ignore,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct ChatResult {
     pub stop_reason: StopReason,
     pub usage: Option<Usage>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct ModelInfo {
     pub id: String,
     pub display_name: Option<String>,
