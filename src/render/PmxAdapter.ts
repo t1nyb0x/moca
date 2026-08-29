@@ -20,12 +20,20 @@ import { armLoweringAngle } from "@/domain/model/rest-pose";
 import { resolveTexturePath } from "@/domain/model/texture-path";
 import type { ModelAdapter, ModelLoadContext } from "./ModelAdapter";
 
-/** 腕のボーン。MMD の標準的な命名。 */
-const ARM_BONES = { left: ["左腕"], right: ["右腕"] } as const;
+/**
+ * 腕のボーン。MMD の標準的な命名を先に、他所の命名を後に並べる。
+ *
+ * 名前が一致しないと姿勢の調整が何も起きず、しかも何のエラーも出ない。
+ * 候補を広めに持ち、当たったかどうかは診断で見えるようにしている。
+ */
+const ARM_BONES = {
+  left: ["左腕", "腕.L", "arm_L", "LeftArm", "Left arm", "leftArm"],
+  right: ["右腕", "腕.R", "arm_R", "RightArm", "Right arm", "rightArm"],
+} as const;
 /** 腕の向きを測る先。手首が無ければひじで代用する。 */
 const ARM_TIP_BONES = {
-  left: ["左手首", "左ひじ"],
-  right: ["右手首", "右ひじ"],
+  left: ["左手首", "左ひじ", "手首.L", "ひじ.L", "LeftHand", "LeftForeArm"],
+  right: ["右手首", "右ひじ", "手首.R", "ひじ.R", "RightHand", "RightForeArm"],
 } as const;
 
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -82,6 +90,7 @@ export class PmxAdapter implements ModelAdapter {
    * 一度きりの変更では消される。呼吸と同じ扱い。
    */
   readonly #restPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[] = [];
+  readonly #bones: readonly THREE.Bone[];
 
   constructor(
     root: THREE.Group,
@@ -100,6 +109,7 @@ export class PmxAdapter implements ModelAdapter {
     this.#mapping = this.#defaultMapping;
 
     const bones = meshes[0]?.skeleton.bones ?? [];
+    this.#bones = bones;
     const find = (names: readonly string[]): THREE.Bone | null =>
       names.map((name) => bones.find((bone) => bone.name === name)).find(Boolean) ?? null;
 
@@ -317,6 +327,14 @@ export class PmxAdapter implements ModelAdapter {
   headWorldPosition(out: THREE.Vector3): THREE.Vector3 {
     if (this.#head === null) return out.set(0, this.height() * 0.9, 0);
     return this.#head.getWorldPosition(out);
+  }
+
+  boneNames(): readonly string[] {
+    return this.#bones.map((bone) => bone.name);
+  }
+
+  adjustedBones(): readonly string[] {
+    return this.#restPose.map((entry) => entry.bone.name);
   }
 
   height(): number {

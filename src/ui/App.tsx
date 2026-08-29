@@ -121,8 +121,12 @@ export function App(): React.JSX.Element {
       {model?.format === "pmx" && !licenseAcknowledged && (
         <p className="banner banner--notice" role="status">
           <span className="banner__body">
-            MMD 向けのモデルは、再配布や改変、利用目的に制限を設けているものが
-            多くあります。配布元の規約をご確認のうえお使いください。
+            <strong>PMX の対応は実験的です。</strong>
+            表示と揺れ物までを目安としており、表情は診断パネルから手で
+            割り当てる必要があります。立ち姿と視線は調整されません。
+            <br />
+            また MMD 向けのモデルは、再配布や改変、利用目的に制限を設けている
+            ものが多くあります。配布元の規約をご確認のうえお使いください。
           </span>
           <span className="banner__actions">
             <button type="button" onClick={() => setLicenseAcknowledged(true)}>

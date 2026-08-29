@@ -111,6 +111,19 @@ pub fn conversation_delete(state: State<'_, AppState>, id: String) -> Result<()>
     state.conversation_delete(&id)
 }
 
+/// 画面側で起きた失敗を記録する。
+///
+/// WebView の中の例外は Rust のログに残らない。残らないと「エラーになる」
+/// としか分からず、調査の取っ掛かりが無い。画面側から明示的に送ってもらう。
+#[tauri::command]
+pub fn log_client_error(message: String, detail: Option<String>) {
+    tracing::error!(
+        target: "moca::client",
+        detail = detail.as_deref().unwrap_or("-"),
+        "画面側でエラー: {message}"
+    );
+}
+
 /// ログの保存先。不具合の報告に添えてもらうために表示する。
 #[tauri::command]
 pub fn logs_dir(app: AppHandle) -> Result<String> {

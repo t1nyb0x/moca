@@ -63,5 +63,11 @@ export interface ModelAdapter {
   /** モデル全体の高さ。 */
   height(): number;
 
+  /** モデルが持つボーン名。 */
+  boneNames(): readonly string[];
+
+  /** 立ち姿の調整で実際に動かしたボーン。空なら当たっていない。 */
+  adjustedBones(): readonly string[];
+
   dispose(): void;
 }

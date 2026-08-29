@@ -34,4 +34,13 @@ export type ModelDiagnostics = {
   readonly emotionMorphs: Readonly<
     Record<CanonicalEmotion, readonly MorphTarget[]>
   > | null;
+  /** モデルが持つボーン名。姿勢の調整が当たらないときの手がかりになる。 */
+  readonly boneNames: readonly string[];
+  /**
+   * 立ち姿の調整で実際に動かしたボーン。
+   *
+   * 空なら T ポーズのままになる。名前が一致しないと何も起きず、しかも
+   * 何のエラーも出ないので、当たったかどうかを持ち回る。
+   */
+  readonly adjustedBones: readonly string[];
 };

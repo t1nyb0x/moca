@@ -219,6 +219,8 @@ export class Viewer {
       approximatedEmotions: adapter.approximatedEmotions(),
       rendererName: this.rendererInfo(),
       emotionMorphs: adapter instanceof PmxAdapter ? adapter.emotionMorphs() : null,
+      boneNames: adapter.boneNames(),
+      adjustedBones: adapter.adjustedBones(),
     };
   }
 

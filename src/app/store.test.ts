@@ -395,6 +395,8 @@ describe("診断", () => {
     expressibleEmotions: ["neutral", "happy", "sad"] as const,
     approximatedEmotions: [] as const,
     emotionMorphs: null,
+    boneNames: ["左腕", "右腕"],
+    adjustedBones: ["左腕", "右腕"],
     rendererName: "ANGLE (NVIDIA)",
   };
 
