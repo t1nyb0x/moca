@@ -129,7 +129,8 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
       </p>
 
       <p className="diag__note">
-        現在の感情: <strong>{EMOTION_LABELS[emotion.emotion] ?? emotion.emotion}</strong>
+        直近に受け取った感情:{" "}
+        <strong>{EMOTION_LABELS[emotion.emotion] ?? emotion.emotion}</strong>
         {emotion.intensity !== 1 && `（強さ ${emotion.intensity}）`}
       </p>
 
@@ -137,7 +138,11 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
         <details className="diag__details" open>
           <summary>直近の応答</summary>
           <p className="diag__note">
-            検出したタグ: <strong>{lastAssistant.emotions?.length ?? 0} 個</strong>
+            感情の切り替わり: <strong>{lastAssistant.emotions?.length ?? 0} 回</strong>
+            <br />
+            <small>
+              直前と同じ感情のタグは変化として数えません（emotion-protocol W-5）。
+            </small>
             {(lastAssistant.emotions?.length ?? 0) === 0 &&
               "。モデルがタグを出していません。人格の書き方を変えるか、感情タグに従いやすいモデルをお試しください。"}
           </p>

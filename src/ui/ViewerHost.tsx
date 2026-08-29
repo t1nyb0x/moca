@@ -67,13 +67,15 @@ export function ViewerHost(): React.JSX.Element {
         (current) => current.model,
         (model) => load(model?.path ?? null),
       ),
-      store.subscribe(
-        (current) => current.emotion,
-        (emotion) => viewer.setEmotion(emotion.emotion, emotion.intensity),
-      ),
+      // 会話中の感情は発話と一緒に渡し、口が到達した時点で反映させる
       store.subscribe(
         (current) => current.speech,
-        (speech) => viewer.feedSpeech(speech.text),
+        (speech) => viewer.feedSpeech(speech.text, speech.emotion),
+      ),
+      // 手動の確認は即座に反映する
+      store.subscribe(
+        (current) => current.preview,
+        (preview) => viewer.setEmotion(preview.emotion),
       ),
       store.subscribe(
         (current) => current.settings?.lipSyncCharsPerSecond ?? 10,

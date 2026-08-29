@@ -37,6 +37,16 @@ export type LipSyncState = {
    * 消化し終えた途端に閉口してしまう。最後の消化を起点にする必要がある。
    */
   readonly sinceActivity: number;
+  /**
+   * これまでに投入したキューの総数。単調増加。
+   *
+   * 感情の切り替えを口の再生位置へ同期させるために使う。受信した瞬間に
+   * 感情を変えると、口がまだ最初の文を喋っているのに顔だけ最後の感情に
+   * なってしまう。
+   */
+  readonly fed: number;
+  /** これまでに消化したキューの総数。単調増加。 */
+  readonly consumed: number;
 };
 
 export function createLipSyncState(): LipSyncState {
@@ -47,16 +57,20 @@ export function createLipSyncState(): LipSyncState {
     target: 0,
     sinceConsume: 0,
     sinceActivity: 0,
+    fed: 0,
+    consumed: 0,
   };
 }
 
 /** 受信したテキストを口形のキューへ変換して積む。 */
 export function feedLipSync(state: LipSyncState, text: string): LipSyncState {
   if (text === "") return state;
+  const cues = cuesOf(text);
   return {
     ...state,
-    pending: [...state.pending, ...cuesOf(text)],
+    pending: [...state.pending, ...cues],
     sinceActivity: 0,
+    fed: state.fed + cues.length,
   };
 }
 
@@ -112,6 +126,8 @@ export function advanceLipSync(
     target,
     sinceConsume,
     sinceActivity,
+    fed: state.fed,
+    consumed: state.consumed + consumed,
   };
 }
 

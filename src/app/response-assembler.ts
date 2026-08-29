@@ -1,12 +1,9 @@
 import { EmotionTagParser } from "@/domain/emotion/parser";
-import type { CanonicalEmotion } from "@/domain/emotion/types";
+import { NEUTRAL_CUE, type EmotionCue } from "@/domain/emotion/types";
 import type { EmotionSpan } from "@/ipc/generated/EmotionSpan";
 import type { Message } from "@/ipc/generated/Message";
 
-export type EmotionCue = {
-  readonly emotion: CanonicalEmotion;
-  readonly intensity: number;
-};
+export type { EmotionCue };
 
 /** 1 チャンクを流し込んだ結果、UI と 3D ビューへ伝えるべきこと。 */
 export type AssemblerUpdate = {
@@ -16,7 +13,7 @@ export type AssemblerUpdate = {
   readonly emotion: EmotionCue | null;
 };
 
-const NEUTRAL: EmotionCue = { emotion: "neutral", intensity: 1 };
+const NEUTRAL = NEUTRAL_CUE;
 
 /**
  * ストリーミング応答を組み立てる。

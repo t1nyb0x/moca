@@ -5,7 +5,7 @@ import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
-import type { CanonicalEmotion } from "@/domain/emotion/types";
+import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
@@ -15,7 +15,7 @@ import type { Settings } from "@/ipc/generated/Settings";
 import type { StopReason } from "@/ipc/generated/StopReason";
 
 import { budgetFromContextLength, DEFAULT_MAX_TURNS, trimHistory } from "./context-window";
-import { ResponseAssembler, type EmotionCue } from "./response-assembler";
+import { ResponseAssembler } from "./response-assembler";
 
 export type ChatStatus = "idle" | "streaming";
 
@@ -28,9 +28,17 @@ export type ChatStatus = "idle" | "streaming";
 export type SpeechChunk = {
   readonly seq: number;
   readonly text: string;
+  /** このテキストの先頭に対応する感情。無ければ null。 */
+  readonly emotion: EmotionCue | null;
 };
 
-const NEUTRAL: EmotionCue = { emotion: "neutral", intensity: 1 };
+/** 手動で感情を確かめるための指示。発話とは独立に即座に反映される。 */
+export type EmotionPreview = {
+  readonly seq: number;
+  readonly emotion: CanonicalEmotion;
+};
+
+const NEUTRAL = NEUTRAL_CUE;
 
 export type AppState = {
   settings: Settings | null;
@@ -49,8 +57,10 @@ export type AppState = {
   thinkingText: string;
   requestId: string | null;
   error: CommandError | null;
+  /** 直近に受け取った感情。診断の表示に使う。 */
   emotion: EmotionCue;
   speech: SpeechChunk;
+  preview: EmotionPreview;
 
   /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
   model: ModelHandle | null;
@@ -163,7 +173,8 @@ export function createAppStore(): UseBoundStore<
     requestId: null,
     error: null,
     emotion: NEUTRAL,
-    speech: { seq: 0, text: "" },
+    speech: { seq: 0, text: "", emotion: null },
+    preview: { seq: 0, emotion: "neutral" },
     model: null,
     modelDiagnostics: null,
     showViewer: true,
@@ -172,7 +183,11 @@ export function createAppStore(): UseBoundStore<
 
     setModelDiagnostics: (diagnostics) => set({ modelDiagnostics: diagnostics }),
 
-    previewEmotion: (emotion) => set({ emotion: { emotion, intensity: 1 } }),
+    previewEmotion: (emotion) =>
+      set((current) => ({
+        emotion: { emotion, intensity: 1 },
+        preview: { seq: current.preview.seq + 1, emotion },
+      })),
 
     setIdleSettings: async (idle) => {
       const state = get();
@@ -398,10 +413,16 @@ export function createAppStore(): UseBoundStore<
             set((current) => ({
               streamingText: assembler.display,
               emotion: update.emotion ?? current.emotion,
+              // 感情は口が該当位置へ到達した時点で反映されるよう、
+              // テキストと一緒に送る。
               speech:
-                update.appendedText === ""
+                update.appendedText === "" && update.emotion === null
                   ? current.speech
-                  : { seq: current.speech.seq + 1, text: update.appendedText },
+                  : {
+                      seq: current.speech.seq + 1,
+                      text: update.appendedText,
+                      emotion: update.emotion,
+                    },
             }));
           },
         );

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import type { CanonicalEmotion } from "@/domain/emotion/types";
+import type { CanonicalEmotion, EmotionCue } from "@/domain/emotion/types";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
   advanceBlink,
@@ -90,6 +90,13 @@ export class Viewer {
   #breath: BreathState;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
+  /**
+   * まだ発話が追いついていない感情の切り替え。
+   *
+   * 受信した瞬間に顔を変えると、口がまだ最初の文を喋っているのに表情だけ
+   * 最後の感情になってしまう。口が該当位置を通過してから切り替える。
+   */
+  #emotionMarkers: { at: number; cue: EmotionCue }[] = [];
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
@@ -190,12 +197,22 @@ export class Viewer {
     };
   }
 
+  /** 感情を即座に切り替える。手動の確認用。 */
   setEmotion(emotion: CanonicalEmotion, intensity = 1): void {
+    this.#emotionMarkers = [];
     this.#expression = setExpressionTarget(this.#expression, emotion, intensity);
   }
 
-  /** 受信したテキストをリップシンクへ送る。差分だけを渡すこと。 */
-  feedSpeech(text: string): void {
+  /**
+   * 受信したテキストと、その直前に指定された感情を送る。
+   *
+   * 差分だけを渡すこと。感情はこのテキストの先頭に対応するので、口が
+   * そこへ到達した時点で切り替える。
+   */
+  feedSpeech(text: string, emotion: EmotionCue | null = null): void {
+    if (emotion !== null) {
+      this.#emotionMarkers.push({ at: this.#lipSync.fed, cue: emotion });
+    }
     this.#lipSync = feedLipSync(this.#lipSync, text);
   }
 
@@ -241,6 +258,29 @@ export class Viewer {
     this.#controls.update();
   }
 
+  /**
+   * 口が到達した位置までの感情を反映する。
+   *
+   * 消化待ちが尽きているときは待つ相手がいないので、残りをまとめて出す。
+   * 末尾のタグの後に本文が続かない場合に取り残されないようにするため。
+   */
+  #fireDueEmotions(): void {
+    while (this.#emotionMarkers.length > 0) {
+      const marker = this.#emotionMarkers[0];
+      if (marker === undefined) break;
+      const reached = this.#lipSync.consumed >= marker.at;
+      const nothingLeft = this.#lipSync.pending.length === 0;
+      if (!reached && !nothingLeft) break;
+
+      this.#emotionMarkers.shift();
+      this.#expression = setExpressionTarget(
+        this.#expression,
+        marker.cue.emotion,
+        marker.cue.intensity,
+      );
+    }
+  }
+
   #clearModel(): void {
     if (this.#adapter === null) return;
     this.#scene.remove(this.#adapter.object);
@@ -274,6 +314,7 @@ export class Viewer {
   #step(delta: number): void {
     this.#expression = advanceExpression(this.#expression, delta);
     this.#lipSync = advanceLipSync(this.#lipSync, delta, this.#lipSyncConfig);
+    this.#fireDueEmotions();
     if (this.#idle.blink) this.#blink = advanceBlink(this.#blink, delta);
     if (this.#idle.breath) this.#breath = advanceBreath(this.#breath, delta);
     if (this.#idle.saccade) {

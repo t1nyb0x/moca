@@ -136,6 +136,51 @@ describe("LipSyncController", () => {
     expect(advanceLipSync(state, -1)).toEqual(state);
   });
 
+  describe("再生位置", () => {
+    it("投入した数を数える", () => {
+      const state = feedLipSync(createLipSyncState(), "あいう");
+      expect(state.fed).toBe(3);
+      expect(state.consumed).toBe(0);
+    });
+
+    it("消化した数を数える", () => {
+      let state = feedLipSync(createLipSyncState(), "あいうえお");
+      state = run(state, 0.35); // 3 文字ぶん
+      expect(state.consumed).toBeGreaterThanOrEqual(3);
+      expect(state.consumed).toBeLessThanOrEqual(4);
+    });
+
+    it("投入も消化も単調に増える", () => {
+      let state = feedLipSync(createLipSyncState(), "あいうえお");
+      let fed = state.fed;
+      let consumed = state.consumed;
+      for (let t = 0; t < 2; t += DT) {
+        state = advanceLipSync(state, DT);
+        expect(state.fed).toBeGreaterThanOrEqual(fed);
+        expect(state.consumed).toBeGreaterThanOrEqual(consumed);
+        fed = state.fed;
+        consumed = state.consumed;
+      }
+    });
+
+    it("消化は投入を追い越さない", () => {
+      let state = feedLipSync(createLipSyncState(), "あいうえお");
+      for (let t = 0; t < 3; t += DT) {
+        state = advanceLipSync(state, DT);
+        expect(state.consumed).toBeLessThanOrEqual(state.fed);
+      }
+    });
+
+    it("追加投入しても数え直さない", () => {
+      let state = feedLipSync(createLipSyncState(), "あい");
+      state = run(state, 0.35);
+      const before = state.consumed;
+      state = feedLipSync(state, "うえ");
+      expect(state.consumed).toBe(before);
+      expect(state.fed).toBe(4);
+    });
+  });
+
   it("同じ入力からは同じ結果になる", () => {
     const build = (): LipSyncState =>
       run(feedLipSync(createLipSyncState(), "こんにちは。"), 2);

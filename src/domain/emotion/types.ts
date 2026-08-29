@@ -22,6 +22,14 @@ export function isCanonicalEmotion(value: string): value is CanonicalEmotion {
   return EMOTION_SET.has(value);
 }
 
+/** 感情とその強さ。表情の指示として持ち回る単位。 */
+export type EmotionCue = {
+  readonly emotion: CanonicalEmotion;
+  readonly intensity: number;
+};
+
+export const NEUTRAL_CUE: EmotionCue = { emotion: "neutral", intensity: 1 };
+
 /** パーサが発行するイベント。docs/emotion-protocol.md 3.2 */
 export type ParseEvent =
   | { readonly type: "text"; readonly value: string }

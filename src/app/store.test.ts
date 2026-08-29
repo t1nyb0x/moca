@@ -305,13 +305,24 @@ describe("診断", () => {
   });
 
   it("感情を手で指定できる", () => {
-    // LLM と同じ経路を通すので、これで顔が変われば経路は生きている
     const instance = store();
     instance.getState().previewEmotion("angry");
     expect(instance.getState().emotion).toEqual({
       emotion: "angry",
       intensity: 1,
     });
+  });
+
+  it("手動の指定は発話とは別の経路で即座に伝える", () => {
+    const instance = store();
+    const before = instance.getState().preview.seq;
+    instance.getState().previewEmotion("sad");
+
+    const preview = instance.getState().preview;
+    expect(preview.seq).toBe(before + 1);
+    expect(preview.emotion).toBe("sad");
+    // 発話の列は動かさない
+    expect(instance.getState().speech.seq).toBe(0);
   });
 });
 
@@ -412,6 +423,42 @@ describe("send", () => {
     // リップシンクは追加分だけを消化するので、差分ごとに seq が進む
     expect(instance.getState().speech.seq).toBe(3);
     expect(instance.getState().speech.text).toBe("よう");
+  });
+
+  it("感情は発話に添えて渡す", async () => {
+    // 受信した瞬間に顔を変えると、口が追いつく前に表情だけ先へ進む
+    const chunks: { text: string; emotion: string | null }[] = [];
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "text", value: "[happy]うれしい" });
+      onDelta({ kind: "text", value: "です" });
+      return okResult;
+    });
+
+    const instance = store();
+    const off = instance.subscribe(
+      (state) => state.speech,
+      (speech) => chunks.push({ text: speech.text, emotion: speech.emotion?.emotion ?? null }),
+    );
+    await instance.getState().send("やあ");
+    off();
+
+    expect(chunks).toEqual([
+      { text: "うれしい", emotion: "happy" },
+      { text: "です", emotion: null },
+    ]);
+  });
+
+  it("本文が無くても感情だけは渡す", async () => {
+    // タグだけが先に届く場合を取りこぼさない
+    mocked.chatStream.mockImplementation(async (_request, onDelta) => {
+      onDelta({ kind: "text", value: "[happy]" });
+      return okResult;
+    });
+
+    const instance = store();
+    await instance.getState().send("やあ");
+    expect(instance.getState().speech.emotion?.emotion).toBe("happy");
+    expect(instance.getState().speech.text).toBe("");
   });
 
   it("保存はストリームの解決後に一度だけ行う", async () => {
