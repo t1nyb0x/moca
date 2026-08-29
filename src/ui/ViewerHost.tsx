@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/app/store";
 import { toAssetUrl } from "@/ipc";
 import { Viewer } from "@/render/Viewer";
+import { ViewerToolbar } from "./ViewerToolbar";
 
 /**
  * 3D ビューの器。
@@ -13,6 +14,7 @@ import { Viewer } from "@/render/Viewer";
  */
 export function ViewerHost(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<Viewer | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
@@ -21,6 +23,7 @@ export function ViewerHost(): React.JSX.Element {
     if (container === null) return;
 
     const viewer = new Viewer(container);
+    viewerRef.current = viewer;
     viewer.onError = (error) => {
       setFailure(error instanceof Error ? error.message : "描画に失敗しました");
     };
@@ -31,6 +34,7 @@ export function ViewerHost(): React.JSX.Element {
 
     // 初期状態を流し込む
     viewer.setLipSyncRate(state.settings?.lipSyncCharsPerSecond ?? 10);
+    viewer.setBackgroundColor(state.settings?.backgroundColor ?? null);
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
@@ -42,6 +46,14 @@ export function ViewerHost(): React.JSX.Element {
         .then((diagnostics) => {
           useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
+
+          // 覚えた位置があればそちらを優先する (要件 F-03-5)
+          const current = useAppStore.getState();
+          const saved = current.characters.find(
+            (item) => item.id === current.activeCharacterId,
+          )?.cameraPreset;
+          if (saved != null) viewer.applyCameraState(saved);
+
           if (diagnostics.textureCount === 0) {
             setWarning(
               "テクスチャを読み込めませんでした。モデルが白く表示されます。",
@@ -82,6 +94,10 @@ export function ViewerHost(): React.JSX.Element {
         (rate) => viewer.setLipSyncRate(rate),
       ),
       store.subscribe(
+        (current) => current.settings?.backgroundColor ?? null,
+        (color) => viewer.setBackgroundColor(color),
+      ),
+      store.subscribe(
         (current) =>
           current.characters.find((item) => item.id === current.activeCharacterId)
             ?.idleSettings,
@@ -94,12 +110,14 @@ export function ViewerHost(): React.JSX.Element {
     return () => {
       for (const off of unsubscribe) off();
       viewer.dispose();
+      viewerRef.current = null;
     };
   }, []);
 
   return (
     <div className="viewer">
       <div ref={hostRef} className="viewer__canvas" />
+      <ViewerToolbar viewer={viewerRef} />
       {failure !== null && (
         <p className="viewer__failure" role="alert">
           {failure}

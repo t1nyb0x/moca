@@ -37,6 +37,7 @@ import {
   type LipSyncConfig,
   type LipSyncState,
 } from "@/domain/lipsync/controller";
+import type { CameraState } from "@/ipc/generated/CameraState";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 import { MorphApplier } from "./MorphApplier";
@@ -226,6 +227,25 @@ export class Viewer {
       ...DEFAULT_LIPSYNC_CONFIG,
       charsPerSecond: Math.max(1, charsPerSecond),
     };
+  }
+
+  /** 現在のカメラ位置。キャラクターへ保存するために取り出す (要件 F-03-5)。 */
+  cameraState(): CameraState {
+    const { x, y, z } = this.#camera.position;
+    const target = this.#controls.target;
+    return {
+      position: [x, y, z],
+      target: [target.x, target.y, target.z],
+    };
+  }
+
+  /** 保存しておいたカメラ位置へ戻す。 */
+  applyCameraState(state: CameraState): void {
+    const [px, py, pz] = state.position;
+    const [tx, ty, tz] = state.target;
+    this.#camera.position.set(px, py, pz);
+    this.#controls.target.set(tx, ty, tz);
+    this.#controls.update();
   }
 
   setBackgroundColor(color: string | null): void {

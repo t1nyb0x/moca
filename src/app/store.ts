@@ -3,6 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 
 import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
+import type { CameraState } from "@/ipc/generated/CameraState";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
@@ -88,6 +89,10 @@ export type AppState = {
   previewEmotion: (emotion: CanonicalEmotion) => void;
   /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
   setIdleSettings: (idle: IdleSettings) => Promise<void>;
+  /** 3D ビューの背景色 (要件 F-03-4)。null は既定色。 */
+  setBackgroundColor: (color: string | null) => Promise<void>;
+  /** カメラ位置を選択中のキャラクターへ保存する (要件 F-03-5)。 */
+  saveCameraState: (state: CameraState | null) => Promise<void>;
   pickModel: () => Promise<void>;
   /** 読み込んで選択中のキャラクターへ保存する。投下や選択の受け口。 */
   adoptModel: (path: string) => Promise<void>;
@@ -219,6 +224,38 @@ export function createAppStore(): UseBoundStore<
         emotion: { emotion, intensity: 1 },
         preview: { seq: current.preview.seq + 1, emotion },
       })),
+
+    setBackgroundColor: async (color) => {
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, backgroundColor: color };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    saveCameraState: async (state) => {
+      const current = get();
+      const character = current.characters.find(
+        (item) => item.id === current.activeCharacterId,
+      );
+      if (character === undefined) return;
+
+      const updated = { ...character, cameraPreset: state };
+      set({
+        characters: current.characters.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      });
+      try {
+        await ipc.characterUpsert(updated);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
 
     setIdleSettings: async (idle) => {
       const state = get();

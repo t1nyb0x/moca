@@ -53,6 +53,12 @@ pub struct Settings {
     pub log_level: String,
     pub lip_sync_chars_per_second: f64,
     pub show_viewer: bool,
+    /// 3D ビューの背景色 (要件 F-03-4)。None は既定色。
+    ///
+    /// 後から足した項目なので default が要る。無いと既存の設定ファイルが
+    /// 読めなくなり、利用者の設定が失われる。
+    #[serde(default)]
+    pub background_color: Option<String>,
 }
 
 impl Default for Settings {
@@ -64,6 +70,7 @@ impl Default for Settings {
             // 未決事項 U-5。実機で調整する。
             lip_sync_chars_per_second: 10.0,
             show_viewer: true,
+            background_color: None,
         }
     }
 }
@@ -260,6 +267,16 @@ mod tests {
         let json = r#"{"activeCharacterId":null,"logLevel":"info","lipSyncCharsPerSecond":10.0,"showViewer":true}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn 後から足した項目が無くても読める() {
+        // 背景色を足す前に保存された設定ファイルを想定する。
+        // これが読めないと利用者の設定が失われる。
+        let json = r#"{"schemaVersion":1,"activeCharacterId":"ch1","logLevel":"info","lipSyncCharsPerSecond":10.0,"showViewer":true}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.background_color, None);
+        assert_eq!(settings.active_character_id.as_deref(), Some("ch1"));
     }
 
     #[test]
