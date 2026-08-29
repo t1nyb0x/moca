@@ -41,6 +41,7 @@ pub fn run() {
     init_tracing();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -70,6 +71,8 @@ pub fn run() {
             commands::api::conversation_delete,
             commands::api::chat_stream,
             commands::api::chat_cancel,
+            commands::model::model_pick,
+            commands::model::model_open,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

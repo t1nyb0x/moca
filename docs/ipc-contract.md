@@ -199,15 +199,16 @@ type CanonicalEmotion = "neutral" | "happy" | "angry" | "sad" | "relaxed" | "sur
 
 ```ts
 type ModelHandle = {
-  path: string;
-  assetUrl: string;      // convertFileSrc 済みの URL。three.js のローダーへ渡す
+  path: string;          // 絶対パス。フロントが convertFileSrc に渡す
   format: "vrm" | "pmx";
   sizeBytes: number;
   oversized: boolean;    // 閾値超過。UI で警告する（要件 R-4）
 };
 ```
 
-**設計上の要点。** モデルファイルの中身を IPC で運ばない。60MB の VRM を base64 で往復させると、メモリと時間の двой払いになる。Rust 側はパスをアセットプロトコルのスコープへ登録し、`convertFileSrc` した URL を返すだけとする。three.js のローダーが WebView 側で直接 HTTP 取得する。
+**設計上の要点。** モデルファイルの中身を IPC で運ばない。60MB の VRM を base64 で往復させると、メモリと時間の二重払いになる。Rust 側はパスをアセットプロトコルのスコープへ登録し、パスだけを返す。three.js のローダーが WebView 側で直接取得する。
+
+**URL の組み立てはフロントの `convertFileSrc` に任せる。** アセットプロトコルの URL 形式は Tauri の内部仕様であり、OS によっても異なる。Rust 側で文字列を組み立てると、Tauri の更新で静かに壊れる。
 
 `model_pick` はネイティブのファイルダイアログを開く。`model_open` はドラッグ＆ドロップで得たパス、および前回セッションのパス復元に用いる。いずれも次を検証する。
 

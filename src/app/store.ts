@@ -1,10 +1,12 @@
 import { create, type StoreApi, type UseBoundStore } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 
 import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { Message } from "@/ipc/generated/Message";
+import type { ModelHandle } from "@/ipc/generated/ModelHandle";
 import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 
@@ -41,14 +43,24 @@ export type AppState = {
   emotion: EmotionCue;
   speech: SpeechChunk;
 
+  /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
+  model: ModelHandle | null;
+  showViewer: boolean;
+
   bootstrap: () => Promise<void>;
   setActiveCharacter: (id: string | null) => Promise<void>;
+  /** 選択中のキャラクターへモデルのパスを保存する。 */
+  persistModelPath: (path: string | null) => Promise<void>;
   newConversation: () => void;
   loadConversation: (id: string) => Promise<void>;
   send: (input: string) => Promise<void>;
   cancel: () => Promise<void>;
   regenerate: () => Promise<void>;
   clearError: () => void;
+  pickModel: () => Promise<void>;
+  openModel: (path: string) => Promise<void>;
+  clearModel: () => Promise<void>;
+  setShowViewer: (show: boolean) => Promise<void>;
 };
 
 function nowIso(): string {
@@ -82,8 +94,26 @@ function userMessage(content: string): Message {
   };
 }
 
-export function createAppStore(): UseBoundStore<StoreApi<AppState>> {
-  return create<AppState>((set, get) => ({
+/**
+ * `subscribeWithSelector` を挟むのは、3D ビューが特定の値だけを購読する
+ * ため (ADR-0007)。素の subscribe は状態全体の変化しか通知しない。
+ */
+export function createAppStore(): UseBoundStore<
+  Omit<StoreApi<AppState>, "subscribe"> & {
+    subscribe: {
+      (listener: (state: AppState, prev: AppState) => void): () => void;
+      <U>(
+        selector: (state: AppState) => U,
+        listener: (selected: U, previous: U) => void,
+        options?: {
+          equalityFn?: (a: U, b: U) => boolean;
+          fireImmediately?: boolean;
+        },
+      ): () => void;
+    };
+  }
+> {
+  return create<AppState>()(subscribeWithSelector((set, get) => ({
     settings: null,
     providers: [],
     characters: [],
@@ -96,6 +126,8 @@ export function createAppStore(): UseBoundStore<StoreApi<AppState>> {
     error: null,
     emotion: NEUTRAL,
     speech: { seq: 0, text: "" },
+    model: null,
+    showViewer: true,
 
     clearError: () => set({ error: null }),
 
@@ -111,6 +143,75 @@ export function createAppStore(): UseBoundStore<StoreApi<AppState>> {
           providers,
           characters,
           activeCharacterId: settings.activeCharacterId,
+          showViewer: settings.showViewer,
+        });
+
+        // 前回のモデルを復元する (要件 F-01-6)。失敗しても本体は動かす。
+        const active = characters.find(
+          (character) => character.id === settings.activeCharacterId,
+        );
+        if (active?.modelPath != null) {
+          await get().openModel(active.modelPath);
+        }
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    pickModel: async () => {
+      try {
+        const handle = await ipc.modelPick();
+        if (handle === null) return;
+        set({ model: handle });
+        await get().persistModelPath(handle.path);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    openModel: async (path) => {
+      try {
+        set({ model: await ipc.modelOpen(path) });
+      } catch (error) {
+        // 読めなくても会話は続けられる。モデル未設定と同じ状態にする。
+        set({ model: null, error: error as CommandError });
+      }
+    },
+
+    clearModel: async () => {
+      set({ model: null });
+      await get().persistModelPath(null);
+    },
+
+    setShowViewer: async (show) => {
+      set({ showViewer: show });
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, showViewer: show };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    persistModelPath: async (path) => {
+      const state = get();
+      const character = state.characters.find(
+        (item) => item.id === state.activeCharacterId,
+      );
+      if (character === undefined) return;
+      try {
+        const saved = await ipc.characterUpsert({
+          ...character,
+          modelPath: path,
+          modelFormat: path === null ? null : "vrm",
+        });
+        set({
+          characters: state.characters.map((item) =>
+            item.id === saved.id ? saved : item,
+          ),
         });
       } catch (error) {
         set({ error: error as CommandError });
@@ -118,7 +219,13 @@ export function createAppStore(): UseBoundStore<StoreApi<AppState>> {
     },
 
     setActiveCharacter: async (id) => {
-      set({ activeCharacterId: id, conversation: null, emotion: NEUTRAL });
+      set({ activeCharacterId: id, conversation: null, emotion: NEUTRAL, model: null });
+
+      const character = get().characters.find((item) => item.id === id);
+      if (character?.modelPath != null) {
+        await get().openModel(character.modelPath);
+      }
+
       const settings = get().settings;
       if (settings === null) return;
       const next = { ...settings, activeCharacterId: id };
@@ -288,7 +395,7 @@ export function createAppStore(): UseBoundStore<StoreApi<AppState>> {
 
       await get().send(input);
     },
-  }));
+  })));
 }
 
 export const useAppStore = createAppStore();

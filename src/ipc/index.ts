@@ -4,7 +4,7 @@
  * 契約は docs/ipc-contract.md。型は Rust 側から ts-rs で生成しており、
  * ここで手書きしてはならない。
  */
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 import type { ChatResult } from "./generated/ChatResult";
 import type { ChatStreamRequest } from "./generated/ChatStreamRequest";
@@ -12,6 +12,7 @@ import type { CharacterProfile } from "./generated/CharacterProfile";
 import type { Conversation } from "./generated/Conversation";
 import type { ConversationSummary } from "./generated/ConversationSummary";
 import type { Delta } from "./generated/Delta";
+import type { ModelHandle } from "./generated/ModelHandle";
 import type { ModelInfo } from "./generated/ModelInfo";
 import type { ProviderHealth } from "./generated/ProviderHealth";
 import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
@@ -77,6 +78,22 @@ export const conversationSave = (conversation: Conversation): Promise<void> =>
 
 export const conversationDelete = (id: string): Promise<void> =>
   call("conversation_delete", { id });
+
+/** ネイティブのファイルダイアログを開く。選ばなければ null。 */
+export const modelPick = (): Promise<ModelHandle | null> => call("model_pick");
+
+/** ドラッグ＆ドロップや前回のパスの復元に使う。 */
+export const modelOpen = (path: string): Promise<ModelHandle> =>
+  call("model_open", { path });
+
+/**
+ * モデルのパスを three.js が取得できる URL にする。
+ *
+ * URL の形式は Tauri の内部仕様なので、自前で組み立てず必ずこれを通す
+ * (docs/ipc-contract.md 2.5)。model_pick / model_open がスコープを
+ * 許可した後でなければ読み込めない。
+ */
+export const toAssetUrl = (path: string): string => convertFileSrc(path);
 
 /**
  * ストリームが終わるまで解決しない。

@@ -15,6 +15,9 @@ vi.mock("@/ipc", () => ({
   conversationSave: vi.fn(),
   chatStream: vi.fn(),
   chatCancel: vi.fn(),
+  characterUpsert: vi.fn(),
+  modelPick: vi.fn(),
+  modelOpen: vi.fn(),
 }));
 
 import * as ipc from "@/ipc";
@@ -89,10 +92,161 @@ function store() {
   return instance;
 }
 
+const handle = {
+  path: "C:\\models\\china.vrm",
+  format: "vrm" as const,
+  sizeBytes: 12_345,
+  oversized: false,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocked.conversationSave.mockResolvedValue(undefined);
   mocked.chatCancel.mockResolvedValue(undefined);
+  mocked.characterUpsert.mockImplementation(async (profile) => profile);
+  mocked.settingsSet.mockResolvedValue(undefined);
+});
+
+describe("モデル", () => {
+  it("選んだモデルを保持し、キャラクターへパスを保存する", async () => {
+    mocked.modelPick.mockResolvedValue(handle);
+    const instance = store();
+
+    await instance.getState().pickModel();
+
+    expect(instance.getState().model).toEqual(handle);
+    expect(mocked.characterUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ modelPath: handle.path, modelFormat: "vrm" }),
+    );
+  });
+
+  it("ダイアログを閉じたら何も変えない", async () => {
+    mocked.modelPick.mockResolvedValue(null);
+    const instance = store();
+
+    await instance.getState().pickModel();
+
+    expect(instance.getState().model).toBeNull();
+    expect(mocked.characterUpsert).not.toHaveBeenCalled();
+  });
+
+  it("選択に失敗したらエラーとして保持する", async () => {
+    mocked.modelPick.mockRejectedValue({
+      kind: "invalid",
+      message: "対応していない形式です",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+
+    await instance.getState().pickModel();
+    expect(instance.getState().error?.kind).toBe("invalid");
+  });
+
+  it("パスから開ける", async () => {
+    mocked.modelOpen.mockResolvedValue(handle);
+    const instance = store();
+    await instance.getState().openModel(handle.path);
+    expect(instance.getState().model).toEqual(handle);
+  });
+
+  it("読めなければモデル未設定と同じ状態にする", async () => {
+    // 会話は続けられるようにする (要件 F-02)
+    mocked.modelOpen.mockRejectedValue({
+      kind: "io",
+      message: "読めません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+
+    await instance.getState().openModel("C:\\missing.vrm");
+
+    expect(instance.getState().model).toBeNull();
+    expect(instance.getState().error?.kind).toBe("io");
+  });
+
+  it("モデルを外すとパスも消す", async () => {
+    mocked.modelOpen.mockResolvedValue(handle);
+    const instance = store();
+    await instance.getState().openModel(handle.path);
+
+    await instance.getState().clearModel();
+
+    expect(instance.getState().model).toBeNull();
+    expect(mocked.characterUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ modelPath: null, modelFormat: null }),
+    );
+  });
+
+  it("キャラクターが選ばれていなければパスを保存しない", async () => {
+    const instance = store();
+    instance.setState({ activeCharacterId: null });
+    await instance.getState().persistModelPath("C:\\x.vrm");
+    expect(mocked.characterUpsert).not.toHaveBeenCalled();
+  });
+
+  it("パスの保存に失敗してもエラーとして保持する", async () => {
+    mocked.characterUpsert.mockRejectedValue({
+      kind: "io",
+      message: "書けません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+    await instance.getState().persistModelPath("C:\\x.vrm");
+    expect(instance.getState().error?.kind).toBe("io");
+  });
+
+  it("起動時に前回のモデルを復元する", async () => {
+    // 要件 F-01-6
+    mocked.settingsGet.mockResolvedValue(settings);
+    mocked.providersList.mockResolvedValue([provider]);
+    mocked.charactersList.mockResolvedValue([
+      { ...character, modelPath: handle.path, modelFormat: "vrm" as const },
+    ]);
+    mocked.modelOpen.mockResolvedValue(handle);
+
+    const instance = createAppStore();
+    await instance.getState().bootstrap();
+
+    expect(mocked.modelOpen).toHaveBeenCalledWith(handle.path);
+    expect(instance.getState().model).toEqual(handle);
+  });
+
+  it("キャラクターを切り替えるとそのモデルを読み込む", async () => {
+    mocked.modelOpen.mockResolvedValue(handle);
+    const instance = store();
+    instance.setState({
+      characters: [
+        character,
+        { ...character, id: "ch2", modelPath: handle.path, modelFormat: "vrm" as const },
+      ],
+    });
+
+    await instance.getState().setActiveCharacter("ch2");
+
+    expect(mocked.modelOpen).toHaveBeenCalledWith(handle.path);
+  });
+});
+
+describe("3D ビューの表示切り替え", () => {
+  it("設定に保存する", async () => {
+    const instance = store();
+    await instance.getState().setShowViewer(false);
+
+    expect(instance.getState().showViewer).toBe(false);
+    expect(mocked.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ showViewer: false }),
+    );
+  });
+
+  it("設定が未読込なら保存を試みない", async () => {
+    const instance = createAppStore();
+    await instance.getState().setShowViewer(false);
+    expect(instance.getState().showViewer).toBe(false);
+    expect(mocked.settingsSet).not.toHaveBeenCalled();
+  });
 });
 
 describe("bootstrap", () => {
