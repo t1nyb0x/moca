@@ -230,6 +230,42 @@ describe("モデル", () => {
   });
 });
 
+describe("診断", () => {
+  const diagnostics = {
+    textureCount: 12,
+    expressionCount: 18,
+    expressibleEmotions: ["neutral", "happy", "sad"] as const,
+    rendererName: "ANGLE (NVIDIA)",
+  };
+
+  it("モデルの素性を保持する", () => {
+    const instance = store();
+    instance.getState().setModelDiagnostics(diagnostics);
+    expect(instance.getState().modelDiagnostics).toEqual(diagnostics);
+  });
+
+  it("モデルを外すと素性も消す", async () => {
+    mocked.modelOpen.mockResolvedValue(handle);
+    const instance = store();
+    await instance.getState().openModel(handle.path);
+    instance.getState().setModelDiagnostics(diagnostics);
+
+    await instance.getState().clearModel();
+
+    expect(instance.getState().modelDiagnostics).toBeNull();
+  });
+
+  it("感情を手で指定できる", () => {
+    // LLM と同じ経路を通すので、これで顔が変われば経路は生きている
+    const instance = store();
+    instance.getState().previewEmotion("angry");
+    expect(instance.getState().emotion).toEqual({
+      emotion: "angry",
+      intensity: 1,
+    });
+  });
+});
+
 describe("3D ビューの表示切り替え", () => {
   it("設定に保存する", async () => {
     const instance = store();

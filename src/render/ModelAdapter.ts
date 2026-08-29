@@ -21,8 +21,11 @@ export interface ModelAdapter {
   /** モデルが持つ表情・モーフの名称。マッピングの解決に使う。 */
   availableMorphs(): readonly string[];
 
-  /** その感情をこのモデルで表現できるか。できなければ null。 */
+  /** その感情をこのモデルで表現できるか。 */
   canExpress(emotion: CanonicalEmotion): boolean;
+
+  /** 表現できる感情の一覧。モデルによって欠けるものがある。 */
+  expressibleEmotions(): readonly CanonicalEmotion[];
 
   /** 合成済みの重みを書き込む。 */
   applyWeights(weights: WeightMap): void;

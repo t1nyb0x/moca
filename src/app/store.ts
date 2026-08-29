@@ -5,6 +5,8 @@ import * as ipc from "@/ipc";
 import type { CommandError } from "@/ipc/errors";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
+import type { CanonicalEmotion } from "@/domain/emotion/types";
+import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
 import type { ModelHandle } from "@/ipc/generated/ModelHandle";
 import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
@@ -51,6 +53,8 @@ export type AppState = {
 
   /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
   model: ModelHandle | null;
+  /** 読み込んだモデルの素性。原因の切り分けに使う。 */
+  modelDiagnostics: ModelDiagnostics | null;
   showViewer: boolean;
 
   bootstrap: () => Promise<void>;
@@ -63,6 +67,9 @@ export type AppState = {
   cancel: () => Promise<void>;
   regenerate: () => Promise<void>;
   clearError: () => void;
+  setModelDiagnostics: (diagnostics: ModelDiagnostics | null) => void;
+  /** 感情を手で指定する。LLM と同じ経路を通るので切り分けに使える。 */
+  previewEmotion: (emotion: CanonicalEmotion) => void;
   pickModel: () => Promise<void>;
   openModel: (path: string) => Promise<void>;
   clearModel: () => Promise<void>;
@@ -155,9 +162,14 @@ export function createAppStore(): UseBoundStore<
     emotion: NEUTRAL,
     speech: { seq: 0, text: "" },
     model: null,
+    modelDiagnostics: null,
     showViewer: true,
 
     clearError: () => set({ error: null }),
+
+    setModelDiagnostics: (diagnostics) => set({ modelDiagnostics: diagnostics }),
+
+    previewEmotion: (emotion) => set({ emotion: { emotion, intensity: 1 } }),
 
     bootstrap: async () => {
       try {
@@ -207,7 +219,7 @@ export function createAppStore(): UseBoundStore<
     },
 
     clearModel: async () => {
-      set({ model: null });
+      set({ model: null, modelDiagnostics: null });
       await get().persistModelPath(null);
     },
 

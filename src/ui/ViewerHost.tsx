@@ -40,10 +40,16 @@ export function ViewerHost(): React.JSX.Element {
       void viewer
         .setModel(path === null ? null : toAssetUrl(path))
         .then((diagnostics) => {
+          useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
           if (diagnostics.textureCount === 0) {
             setWarning(
               "テクスチャを読み込めませんでした。モデルが白く表示されます。",
+            );
+          } else if (diagnostics.expressibleEmotions.length <= 1) {
+            // neutral しか無い、あるいは何も無い
+            setWarning(
+              "このモデルは感情の表情を持っていません。表情は変わりません。",
             );
           }
         })

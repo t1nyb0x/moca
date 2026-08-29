@@ -4,6 +4,7 @@ import { useAppStore } from "@/app/store";
 import { ChatPanel } from "./ChatPanel";
 import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 
 /**
  * アプリケーションの外枠。
@@ -25,6 +26,7 @@ export function App(): React.JSX.Element {
   const setShowViewer = useAppStore((state) => state.setShowViewer);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
     void bootstrap();
@@ -88,6 +90,13 @@ export function App(): React.JSX.Element {
         >
           新しい会話
         </button>
+        <button
+          type="button"
+          onClick={() => setDiagOpen((open) => !open)}
+          aria-pressed={diagOpen}
+        >
+          診断
+        </button>
         <button type="button" onClick={() => setSettingsOpen(true)}>
           設定
         </button>
@@ -103,6 +112,7 @@ export function App(): React.JSX.Element {
         {/* モデル未設定でも、3D を隠していてもチャットは完全に成立する (要件 F-02) */}
         {model !== null && showViewer && <ViewerHost />}
         <ChatPanel />
+        {diagOpen && <DiagnosticsPanel onClose={() => setDiagOpen(false)} />}
       </main>
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}

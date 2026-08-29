@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 
-import type { CanonicalEmotion } from "@/domain/emotion/types";
+import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
 import type { WeightMap } from "@/domain/motion/types";
 import type { ModelAdapter } from "./ModelAdapter";
@@ -151,6 +151,10 @@ export class VrmAdapter implements ModelAdapter {
   canExpress(emotion: CanonicalEmotion): boolean {
     if (emotion === "neutral") return true;
     return this.#available.has(emotion);
+  }
+
+  expressibleEmotions(): readonly CanonicalEmotion[] {
+    return CANONICAL_EMOTIONS.filter((emotion) => this.canExpress(emotion));
   }
 
   applyWeights(weights: WeightMap): void {

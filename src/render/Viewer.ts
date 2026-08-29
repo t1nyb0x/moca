@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { CanonicalEmotion } from "@/domain/emotion/types";
+import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
   advanceBlink,
   createBlinkState,
@@ -43,13 +44,6 @@ import type { ModelAdapter } from "./ModelAdapter";
 import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
-
-export type ModelDiagnostics = {
-  readonly textureCount: number;
-  readonly availableMorphs: number;
-  /** VRM 0.x には surprised が無い (docs/emotion-protocol.md 4.2)。 */
-  readonly canExpressSurprised: boolean;
-};
 
 const DEFAULT_IDLE: IdleSettings = {
   blink: true,
@@ -184,8 +178,9 @@ export class Viewer {
 
     return {
       textureCount: adapter.textureCount,
-      availableMorphs: adapter.availableMorphs().length,
-      canExpressSurprised: adapter.canExpress("surprised"),
+      expressionCount: adapter.availableMorphs().length,
+      expressibleEmotions: adapter.expressibleEmotions(),
+      rendererName: this.rendererInfo(),
     };
   }
 
