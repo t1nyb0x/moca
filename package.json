@@ -12,7 +12,8 @@
     "coverage": "vitest run --coverage",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version:check": "node scripts/version.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",

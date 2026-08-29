@@ -40,14 +40,30 @@ Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外�
 | `develop` | 次のリリースへ向けた作業の集積先 |
 | `feature/*`, `fix/*`, `docs/*` | 個々の作業。`develop` へ取り込む |
 
-リリースの手順:
+### リリースの手順
 
-1. `develop` の内容が出せる状態になったら `main` へ取り込む
-2. `CHANGELOG.md` と各所の版番号（`package.json` / `src-tauri/Cargo.toml` /
-   `src-tauri/tauri.conf.json`）を更新する
-3. `main` に `vX.Y.Z` のタグを打つ
-4. Release ワークフローがインストーラを作り、下書きのプレリリースとして
-   公開する。内容を確認して公開する
+**タグは手で打たない。** 版番号を上げて `main` へ取り込めば、あとは自動で
+進む。手順から人が抜けるほど取りこぼしが減る。
+
+1. `develop` で版番号を 3 箇所とも上げる
+   - `package.json`
+   - `src-tauri/Cargo.toml`
+   - `src-tauri/tauri.conf.json`
+2. `CHANGELOG.md` に変更点を書く
+3. `develop` を `main` へ取り込む
+4. Release ワークフローが動く
+   - 版番号を読み、対応するタグが無ければ打つ
+   - 型チェックとテストを通してから NSIS インストーラを作る
+   - 下書きのプレリリースとして公開する
+5. 内容を確かめて公開する
+
+版番号が 3 箇所で食い違っていると CI が落ちる（`npm run version:check`）。
+どれか一つを上げ忘れると、インストーラの版だけが古いといった食い違いが
+起きるため。
+
+同じ版のまま `main` へ取り込んだ場合、タグが既にあるのでリリースは動かない。
+作り直したいときは Actions から Release を手動で実行し、`force` を有効に
+する。
 
 CI は `main` と `develop` への push、およびすべての PR で回る。
 

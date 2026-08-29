@@ -35,6 +35,10 @@ jobs:
       - name: 依存の導入
         run: npm ci
 
+      # 3 箇所の版番号がずれるとインストーラの版だけが古くなる
+      - name: 版番号の一致
+        run: npm run version:check
+
       - name: 型チェック
         run: npm run typecheck
 
