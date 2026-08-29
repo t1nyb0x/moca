@@ -113,6 +113,21 @@ export function ViewerHost(): React.JSX.Element {
         (current) => current.speech,
         (speech) => viewer.feedSpeech(speech.text, speech.emotion),
       ),
+      // 読み上げ音声があるあいだは、実際の波形に合わせて口を動かす
+      store.subscribe(
+        (current) => current.speechAudio,
+        (audio) => {
+          if (audio === null) {
+            viewer.endAudioSpeech();
+            return;
+          }
+          viewer.speakAudio(
+            audio.segment.text,
+            { emotion: audio.segment.emotion, intensity: 1 },
+            audio.playback.sample,
+          );
+        },
+      ),
       // 手動の確認は即座に反映する
       store.subscribe(
         (current) => current.preview,
