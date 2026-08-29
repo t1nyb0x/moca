@@ -10,7 +10,8 @@ import {
   resolveDefaultMapping,
   type PmxMapping,
 } from "@/domain/model/pmx-mapping";
-import type { ModelAdapter } from "./ModelAdapter";
+import { resolveTexturePath } from "@/domain/model/texture-path";
+import type { ModelAdapter, ModelLoadContext } from "./ModelAdapter";
 
 /** 呼吸を当てるボーン。MMD の標準的な命名。 */
 const CHEST_BONES = ["上半身2", "上半身"] as const;
@@ -202,12 +203,21 @@ function countTexturedMaterials(root: THREE.Object3D): number {
 /**
  * PMX を読み込む。
  *
- * テクスチャはモデルと同じディレクトリから相対パスで参照される。Rust 側
- * がそのディレクトリをアセットプロトコルへ許可している。
+ * テクスチャはモデルからの相対パスで参照される。`convertFileSrc` はパス
+ * 全体を 1 つの URL セグメントへ符号化するため、そこからの相対解決は
+ * 働かない。相対パスを自前で絶対パスへ直してから URL にする。
  */
-export async function loadPmx(url: string): Promise<PmxAdapter> {
-  const loader = new ThreeMmdLoader();
-  const model = await loader.loadModel(url);
+export async function loadPmx(context: ModelLoadContext): Promise<PmxAdapter> {
+  const loader = new ThreeMmdLoader({
+    textureResolver: {
+      resolve: async (texturePath) => {
+        const absolute = resolveTexturePath(context.path, texturePath);
+        if (absolute === "") return undefined;
+        return context.toAssetUrl(absolute);
+      },
+    },
+  });
+  const model = await loader.loadModel(context.url);
 
   const meshes: THREE.SkinnedMesh[] = [];
   model.root.traverse((object) => {

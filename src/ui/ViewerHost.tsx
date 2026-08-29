@@ -43,7 +43,16 @@ export function ViewerHost(): React.JSX.Element {
       setFailure(null);
       setWarning(null);
       void viewer
-        .setModel(handle === null ? null : toAssetUrl(handle.path), handle?.format ?? "vrm")
+        .setModel(
+          handle === null
+            ? null
+            : {
+                url: toAssetUrl(handle.path),
+                path: handle.path,
+                format: handle.format,
+                toAssetUrl,
+              },
+        )
         .then((diagnostics) => {
           useAppStore.getState().setModelDiagnostics(diagnostics);
           if (diagnostics === null) return;
