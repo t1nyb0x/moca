@@ -59,6 +59,13 @@ export function ChatPanel(): React.JSX.Element {
             className={`bubble bubble--${message.role}`}
           >
             {message.content}
+            {/*
+              書いた当時のモデルを出す。現在の接続先から作ると、切り替えた
+              後で過去の返答が嘘になる。記録が無い古い会話では出さない。
+            */}
+            {message.model !== null && (
+              <span className="bubble__model">{message.model}</span>
+            )}
           </article>
         ))}
 

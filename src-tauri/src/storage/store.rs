@@ -315,6 +315,7 @@ mod tests {
                 raw_content: None,
                 emotions: None,
                 created_at: now_rfc3339(),
+                model: None,
             }],
             schema_version: SCHEMA_VERSION,
             created_at: now_rfc3339(),
@@ -498,6 +499,7 @@ mod tests {
             raw_content: Some("[happy]ごきげんよう".to_owned()),
             emotions: None,
             created_at: now_rfc3339(),
+            model: None,
         });
         store.save_conversation(&c).unwrap();
 

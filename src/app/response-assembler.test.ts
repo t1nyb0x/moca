@@ -98,24 +98,30 @@ describe("ResponseAssembler", () => {
 
   it("保存できる形にできる", () => {
     const assembler = feed(["[happy]ごきげんよう。"]);
-    const message = assembler.toMessage("2026-08-29T00:00:00Z");
+    const message = assembler.toMessage("2026-08-29T00:00:00Z", "llama3.2");
     expect(message).toEqual({
       role: "assistant",
       content: "ごきげんよう。",
       rawContent: "[happy]ごきげんよう。",
       emotions: [{ offset: 0, emotion: "happy", intensity: 1 }],
       createdAt: "2026-08-29T00:00:00Z",
+      model: "llama3.2",
     });
   });
 
+  it("使ったモデルが分からなければ null で保存する", () => {
+    const message = feed(["ふつうの返事"]).toMessage("2026-08-29T00:00:00Z", null);
+    expect(message.model).toBeNull();
+  });
+
   it("感情が無ければ emotions は null で保存する", () => {
-    const message = feed(["ふつうの返事"]).toMessage("2026-08-29T00:00:00Z");
+    const message = feed(["ふつうの返事"]).toMessage("2026-08-29T00:00:00Z", null);
     expect(message.emotions).toBeNull();
   });
 
   it("空の応答も壊れない", () => {
     const assembler = feed([]);
     expect(assembler.display).toBe("");
-    expect(assembler.toMessage("t").content).toBe("");
+    expect(assembler.toMessage("t", null).content).toBe("");
   });
 });

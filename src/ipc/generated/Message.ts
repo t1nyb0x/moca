@@ -10,4 +10,10 @@ content: string,
 /**
  * タグを含む原文。assistant のみ。再開時の表情復元に使う。
  */
-rawContent: string | null, emotions: Array<EmotionSpan> | null, createdAt: string, };
+rawContent: string | null, emotions: Array<EmotionSpan> | null, createdAt: string, 
+/**
+ * 生成に使ったモデル。assistant のみ。接続先を切り替えて試し比べたとき、
+ * どれが書いた返答かを後から辿れるようにする。表示のたびに現在の接続先
+ * から作ると、切り替えた後で過去の返答が嘘になるため記録する。
+ */
+model: string | null, };

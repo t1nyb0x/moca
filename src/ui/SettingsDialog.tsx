@@ -68,7 +68,13 @@ function emptyCharacter(providerId: string): CharacterProfile {
 export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const providers = useAppStore((state) => state.providers);
   const characters = useAppStore((state) => state.characters);
+  const activeCharacterId = useAppStore((state) => state.activeCharacterId);
   const bootstrap = useAppStore((state) => state.bootstrap);
+
+  // 一覧の「編集」は編集対象を選ぶだけなので、どれを使っているかが分からない。
+  const activeProviderId = characters.find(
+    (item) => item.id === activeCharacterId,
+  )?.providerId;
 
   const [error, setError] = useState<ReturnType<typeof toCommandError> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -160,9 +166,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <li key={item.id} className="list__item">
                 <span>
                   {item.name}
+                  {item.id === activeProviderId && (
+                    <span className="tag">使用中</span>
+                  )}
                   <small>
                     {KIND_LABELS[item.kind]} / {item.model || "モデル未設定"}
                     {item.hasApiKey ? " / 鍵あり" : ""}
+                    {item.emotionMode === "off" ? " / 感情タグ off" : ""}
                   </small>
                 </span>
                 <span className="list__actions">

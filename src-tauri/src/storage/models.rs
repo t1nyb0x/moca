@@ -217,6 +217,10 @@ pub struct Message {
     pub raw_content: Option<String>,
     pub emotions: Option<Vec<EmotionSpan>>,
     pub created_at: String,
+    /// 生成に使ったモデル。assistant のみ。接続先を切り替えて試し比べたとき、
+    /// どれが書いた返答かを後から辿れるようにする。表示のたびに現在の接続先
+    /// から作ると、切り替えた後で過去の返答が嘘になるため記録する。
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -277,6 +281,15 @@ mod tests {
     }
 
     #[test]
+    fn 使用モデルが無い古い記録も読める() {
+        // model を足す前に保存された会話を想定する。
+        // これが読めないと過去の会話が開けなくなる。
+        let json = r#"{"role":"assistant","content":"ごきげんよう","rawContent":null,"emotions":null,"createdAt":"2026-08-29T00:00:00Z"}"#;
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(message.model, None);
+    }
+
+    #[test]
     fn フィールド名は_camelCase_で保存される() {
         let json = serde_json::to_string(&Settings::default()).unwrap();
         assert!(json.contains("\"activeCharacterId\""));
@@ -325,6 +338,7 @@ mod tests {
                 raw_content: None,
                 emotions: None,
                 created_at: now_rfc3339(),
+                model: None,
             }],
             schema_version: SCHEMA_VERSION,
             created_at: now_rfc3339(),
@@ -347,6 +361,7 @@ mod tests {
                 intensity: 1.0,
             }]),
             created_at: now_rfc3339(),
+            model: Some("llama3.2".to_owned()),
         };
         let json = serde_json::to_string(&message).unwrap();
         let restored: Message = serde_json::from_str(&json).unwrap();
