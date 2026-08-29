@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { emptyVoiceSettings, VoiceSettingsForm } from "./VoiceSettingsForm";
+
 import { useAppStore } from "@/app/store";
 import * as ipc from "@/ipc";
 import { toCommandError } from "@/ipc/errors";
@@ -56,6 +58,7 @@ function emptyCharacter(providerId: string): CharacterProfile {
       springBone: true,
     },
     emotionMapping: null,
+    voiceSettings: null,
     schemaVersion: 1,
     createdAt: now,
     updatedAt: now,
@@ -455,6 +458,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   }
                 />
               </label>
+              <fieldset className="form__fieldset">
+                <legend>声</legend>
+                <VoiceSettingsForm
+                  value={character.voiceSettings ?? emptyVoiceSettings()}
+                  onChange={(voiceSettings) =>
+                    setCharacter({ ...character, voiceSettings })
+                  }
+                />
+              </fieldset>
               <div className="form__actions">
                 <button
                   type="button"
