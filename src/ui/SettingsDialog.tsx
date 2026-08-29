@@ -73,6 +73,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [provider, setProvider] = useState<ProviderProfileDto | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [character, setCharacter] = useState<CharacterProfile | null>(null);
+  /** 接続テストの結果。フォームの中に出す。上部に出すと画面外になる。 */
+  const [health, setHealth] = useState<{ ok: boolean; text: string } | null>(null);
 
   const run = async (task: () => Promise<void>): Promise<void> => {
     setError(null);
@@ -83,15 +85,48 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     }
   };
 
+  /** 保存して最新の姿を返す。空文字は削除、未入力(null)は維持 (契約 2.2)。 */
+  const persist = async (target: ProviderProfileDto): Promise<ProviderProfileDto> => {
+    const saved = await ipc.providerUpsert(target, apiKey === "" ? null : apiKey);
+    setApiKey("");
+    setProvider(saved);
+    await bootstrap();
+    return saved;
+  };
+
   const saveProvider = (): void => {
     if (provider === null) return;
     void run(async () => {
-      // 空文字は削除、未入力(null)は維持 (docs/ipc-contract.md 2.2)
-      await ipc.providerUpsert(provider, apiKey === "" ? null : apiKey);
-      setApiKey("");
+      await persist(provider);
       setProvider(null);
+      setHealth(null);
       setNotice("接続先を保存しました");
-      await bootstrap();
+    });
+  };
+
+  /**
+   * 接続テストとモデル一覧は保存済みの設定に対して動く。利用者に保存の
+   * 段取りを強いるより、先に保存してしまうほうがよい。
+   */
+  const testConnection = (): void => {
+    if (provider === null) return;
+    void run(async () => {
+      setHealth(null);
+      const saved = await persist(provider);
+      const result = await ipc.providerTest(saved.id);
+      setHealth({ ok: result.ok, text: result.detail });
+    });
+  };
+
+  const fetchModels = (): void => {
+    if (provider === null) return;
+    void run(async () => {
+      const saved = await persist(provider);
+      const found = await ipc.providerModels(saved.id);
+      setModels(found);
+      if (found.length === 0) {
+        setHealth({ ok: false, text: "モデルが見つかりませんでした" });
+      }
     });
   };
 
@@ -133,6 +168,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                       setProvider(item);
                       setApiKey("");
                       setModels([]);
+                      setHealth(null);
                     }}
                   >
                     編集
@@ -251,34 +287,61 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <button type="button" onClick={saveProvider}>
                   保存
                 </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void run(async () => {
-                      const health = await ipc.providerTest(provider.id);
-                      setNotice(health.detail);
-                    })
-                  }
-                >
+                <button type="button" onClick={testConnection}>
                   接続テスト
                 </button>
+                <button type="button" onClick={fetchModels}>
+                  モデル一覧を取得
+                </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    void run(async () => {
-                      setModels(await ipc.providerModels(provider.id));
-                      setNotice("モデル一覧を取得しました");
-                    })
-                  }
+                  onClick={() => {
+                    setProvider(null);
+                    setHealth(null);
+                  }}
                 >
-                  モデル一覧
-                </button>
-                <button type="button" onClick={() => setProvider(null)}>
                   やめる
                 </button>
               </div>
+
+              {health !== null && (
+                <p
+                  className={`result ${health.ok ? "result--ok" : "result--ng"}`}
+                  role="status"
+                >
+                  {health.ok ? "接続できました。" : "接続できませんでした。"}
+                  {health.text}
+                </p>
+              )}
+
+              {models.length > 0 && (
+                <div className="picker">
+                  <p className="picker__label">
+                    見つかったモデル（押すと選べます）
+                  </p>
+                  <div className="picker__items">
+                    {models.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        aria-pressed={provider.model === model.id}
+                        className={
+                          provider.model === model.id ? "picker__item picker__item--on" : "picker__item"
+                        }
+                        onClick={() => setProvider({ ...provider, model: model.id })}
+                      >
+                        {model.displayName ?? model.id}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="form__note">
+                    選んだら「保存」を押してください。
+                  </p>
+                </div>
+              )}
+
               <p className="form__note">
-                接続テストとモデル一覧は、保存済みの設定に対して実行されます。
+                接続テストとモデル一覧は、押したときにこの設定を保存してから実行します。
               </p>
             </div>
           )}

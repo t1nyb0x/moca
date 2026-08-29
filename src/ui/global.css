@@ -358,6 +358,41 @@ textarea {
   gap: 0.4rem;
 }
 
+.result {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.92em;
+}
+
+.result--ok {
+  background: var(--notice-bg);
+}
+
+.result--ng {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.picker__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.picker__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.picker__item--on {
+  border-color: var(--accent);
+  background: var(--user-bubble);
+}
+
 .form__note {
   margin: 0;
   color: var(--text-muted);

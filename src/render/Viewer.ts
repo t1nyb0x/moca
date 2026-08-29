@@ -104,9 +104,13 @@ export class Viewer {
     this.#lookAtTarget.position.set(0, 0, -1);
     this.#camera.add(this.#lookAtTarget);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 1.4);
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(1, 2, 2);
+    // three r155 以降、光の強さは物理単位で扱われる。three-vrm の公式例に
+    // ならい主光源を Math.PI とし、環境光は控えめな補助に留める。
+    // 環境光を主光源と同程度まで上げると MToon の陰色が飛び、のっぺりした
+    // 白い塊になる。
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const key = new THREE.DirectionalLight(0xffffff, Math.PI);
+    key.position.set(1, 1, 1).normalize();
     this.#scene.add(ambient, key);
 
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);

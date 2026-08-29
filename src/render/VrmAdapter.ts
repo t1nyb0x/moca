@@ -7,6 +7,71 @@ import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
 import type { WeightMap } from "@/domain/motion/types";
 import type { ModelAdapter } from "./ModelAdapter";
 
+/** 腕を下ろす角度。T ポーズから自然な立ち姿へ。 */
+const RELAXED_UPPER_ARM_RADIANS = 1.2;
+/** 肘のわずかな曲げ。まっすぐだと棒のように見える。 */
+const RELAXED_LOWER_ARM_RADIANS = 0.14;
+
+/**
+ * 片腕を下ろす。
+ *
+ * VRM の初期姿勢は仕様で T ポーズと決まっているが、既に腕が下りている
+ * モデルもあり得るので実測してから適用する。回転の向きも符号を決め打ち
+ * せず、手が下がるほうを選ぶ。左右やモデルの向きで符号が変わるため。
+ */
+function relaxArm(
+  vrm: VRM,
+  upperName: "leftUpperArm" | "rightUpperArm",
+  lowerName: "leftLowerArm" | "rightLowerArm",
+  handName: "leftHand" | "rightHand",
+): void {
+  const upper = vrm.humanoid.getNormalizedBoneNode(upperName);
+  if (upper === null) return;
+  const probe = vrm.humanoid.getNormalizedBoneNode(handName) ?? upper;
+
+  const shoulder = new THREE.Vector3();
+  const hand = new THREE.Vector3();
+
+  vrm.scene.updateMatrixWorld(true);
+  upper.getWorldPosition(shoulder);
+  probe.getWorldPosition(hand);
+
+  const armLength = shoulder.distanceTo(hand);
+  if (armLength > 0 && shoulder.y - hand.y > armLength * 0.3) {
+    // すでに下がっている。触らない。
+    return;
+  }
+
+  const before = hand.y;
+  upper.rotation.z = RELAXED_UPPER_ARM_RADIANS;
+  vrm.scene.updateMatrixWorld(true);
+  probe.getWorldPosition(hand);
+
+  if (hand.y > before) {
+    // 手が上がったので回転の向きが逆
+    upper.rotation.z = -RELAXED_UPPER_ARM_RADIANS;
+    vrm.scene.updateMatrixWorld(true);
+  }
+
+  const lower = vrm.humanoid.getNormalizedBoneNode(lowerName);
+  if (lower !== null) {
+    lower.rotation.z = Math.sign(upper.rotation.z) * RELAXED_LOWER_ARM_RADIANS;
+  }
+}
+
+/**
+ * 立ち姿を整える。
+ *
+ * T ポーズのままだと人形にしか見えない。モーションデータを持たない MVP
+ * では、初期姿勢を作り変えることが「生きている感」の前提になる
+ * (ADR-0005 の補足)。
+ */
+export function applyRelaxedPose(vrm: VRM): void {
+  relaxArm(vrm, "leftUpperArm", "leftLowerArm", "leftHand");
+  relaxArm(vrm, "rightUpperArm", "rightLowerArm", "rightHand");
+  vrm.humanoid.update();
+}
+
 /** 書き込みを試みる表情名。ここに無いキーは無視する。 */
 const WRITABLE_KEYS: readonly string[] = [
   ...EMOTION_KEYS,
@@ -133,6 +198,9 @@ export async function loadVrm(url: string): Promise<VrmAdapter> {
   vrm.scene.traverse((object) => {
     object.frustumCulled = false;
   });
+
+  // T ポーズのままでは人形に見える。腕を下ろしてから返す。
+  applyRelaxedPose(vrm);
 
   return new VrmAdapter(vrm);
 }
