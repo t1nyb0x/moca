@@ -34,12 +34,20 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const diagnostics = useAppStore((state) => state.modelDiagnostics);
   const emotion = useAppStore((state) => state.emotion);
   const previewEmotion = useAppStore((state) => state.previewEmotion);
+  const conversation = useAppStore((state) => state.conversation);
   const characters = useAppStore((state) => state.characters);
   const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
 
   const expressible = new Set(diagnostics?.expressibleEmotions ?? []);
+  const approximated = new Set(diagnostics?.approximatedEmotions ?? []);
   const grouped = groupByRole(diagnostics?.expressionNames ?? []);
+
+  // 直近の応答にタグが含まれていたか。原因を「モデルが出さない」と
+  // 「こちらが取りこぼす」に分けるための決め手になる。
+  const lastAssistant = [...(conversation?.messages ?? [])]
+    .reverse()
+    .find((message) => message.role === "assistant");
 
   const character = characters.find((item) => item.id === activeCharacterId);
   const provider = providers.find((item) => item.id === character?.providerId);
@@ -115,6 +123,21 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
         {emotion.intensity !== 1 && `（強さ ${emotion.intensity}）`}
       </p>
 
+      {lastAssistant !== undefined && (
+        <details className="diag__details" open>
+          <summary>直近の応答</summary>
+          <p className="diag__note">
+            検出したタグ: <strong>{lastAssistant.emotions?.length ?? 0} 個</strong>
+            {(lastAssistant.emotions?.length ?? 0) === 0 &&
+              "。モデルがタグを出していません。人格の書き方を変えるか、感情タグに従いやすいモデルをお試しください。"}
+          </p>
+          <p className="diag__groupLabel">モデルが返した生の文字列</p>
+          <p className="diag__raw">
+            {(lastAssistant.rawContent ?? lastAssistant.content).slice(0, 300)}
+          </p>
+        </details>
+      )}
+
       <p className="diag__note">
         押すと顔が変わるか確かめられます。変われば経路は生きています。
       </p>
@@ -128,10 +151,17 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
               aria-pressed={emotion.emotion === item}
               className={emotion.emotion === item ? "diag__button diag__button--on" : "diag__button"}
               onClick={() => previewEmotion(item)}
-              title={supported ? undefined : "このモデルはこの感情を表現できません"}
+              title={
+                approximated.has(item)
+                  ? "このモデルは専用の表情を持たないため、別の表情で近似します"
+                  : supported
+                    ? undefined
+                    : "このモデルはこの感情を表現できません"
+              }
             >
               {EMOTION_LABELS[item] ?? item}
               {!supported && "（非対応）"}
+              {supported && approximated.has(item) && "（近似）"}
             </button>
           );
         })}

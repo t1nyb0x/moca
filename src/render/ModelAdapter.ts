@@ -27,6 +27,9 @@ export interface ModelAdapter {
   /** 表現できる感情の一覧。モデルによって欠けるものがある。 */
   expressibleEmotions(): readonly CanonicalEmotion[];
 
+  /** 直接の表情が無く、近似で表現している感情。 */
+  approximatedEmotions(): readonly CanonicalEmotion[];
+
   /** 合成済みの重みを書き込む。 */
   applyWeights(weights: WeightMap): void;
 

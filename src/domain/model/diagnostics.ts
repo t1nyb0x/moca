@@ -22,6 +22,8 @@ export type ModelDiagnostics = {
   readonly expressionNames: readonly string[];
   /** 表現できる感情。VRM 0.x には surprised が無い (emotion-protocol.md 4.2)。 */
   readonly expressibleEmotions: readonly CanonicalEmotion[];
+  /** 直接の表情が無く、別の表情で近似している感情。 */
+  readonly approximatedEmotions: readonly CanonicalEmotion[];
   /** 描画に使われている実装。ソフトウェア描画の検出に使う (要件 R-3)。 */
   readonly rendererName: string;
 };

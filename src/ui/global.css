@@ -316,6 +316,18 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.diag__raw {
+  margin: 0.2rem 0 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .diag__buttons {
   display: flex;
   flex-wrap: wrap;

@@ -7,6 +7,20 @@ import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
 import type { WeightMap } from "@/domain/motion/types";
 import type { ModelAdapter } from "./ModelAdapter";
 
+/**
+ * 直接の表情を持たない感情の代替。
+ *
+ * VRM 0.x には surprised に相当するプリセットが無い
+ * (docs/emotion-protocol.md 4.2)。何もしないと無反応になるため、
+ * 使える表情の組み合わせで近似する。眉を動かす手段が無いので、
+ * 口を開けることで驚きらしさを出す。
+ */
+const EMOTION_SUBSTITUTES: Readonly<
+  Partial<Record<CanonicalEmotion, readonly { name: string; scale: number }[]>>
+> = {
+  surprised: [{ name: "oh", scale: 0.45 }],
+};
+
 /** 腕を下ろす角度。T ポーズから自然な立ち姿へ。 */
 const RELAXED_UPPER_ARM_RADIANS = 1.2;
 /** 肘のわずかな曲げ。まっすぐだと棒のように見える。 */
@@ -117,6 +131,11 @@ export class VrmAdapter implements ModelAdapter {
   readonly #spine: THREE.Object3D | null;
   readonly #chestRestX: number;
   readonly #spineRestX: number;
+  /** 直接の表情が無い感情を、使える表情で近似するための対応表。 */
+  readonly #substitutes: ReadonlyMap<
+    CanonicalEmotion,
+    readonly { name: string; scale: number }[]
+  >;
 
   constructor(vrm: VRM) {
     this.#vrm = vrm;
@@ -133,6 +152,18 @@ export class VrmAdapter implements ModelAdapter {
     this.#spine = vrm.humanoid.getNormalizedBoneNode("spine");
     this.#chestRestX = this.#chest?.rotation.x ?? 0;
     this.#spineRestX = this.#spine?.rotation.x ?? 0;
+
+    const substitutes = new Map<
+      CanonicalEmotion,
+      readonly { name: string; scale: number }[]
+    >();
+    for (const [emotion, targets] of Object.entries(EMOTION_SUBSTITUTES)) {
+      const key = emotion as CanonicalEmotion;
+      if (this.#available.has(key) || targets === undefined) continue;
+      const usable = targets.filter((target) => this.#available.has(target.name));
+      if (usable.length > 0) substitutes.set(key, usable);
+    }
+    this.#substitutes = substitutes;
   }
 
   get object(): THREE.Object3D {
@@ -150,7 +181,12 @@ export class VrmAdapter implements ModelAdapter {
    */
   canExpress(emotion: CanonicalEmotion): boolean {
     if (emotion === "neutral") return true;
-    return this.#available.has(emotion);
+    return this.#available.has(emotion) || this.#substitutes.has(emotion);
+  }
+
+  /** 直接の表情が無く、近似で表現している感情。 */
+  approximatedEmotions(): readonly CanonicalEmotion[] {
+    return [...this.#substitutes.keys()];
   }
 
   expressibleEmotions(): readonly CanonicalEmotion[] {
@@ -161,9 +197,20 @@ export class VrmAdapter implements ModelAdapter {
     const manager = this.#vrm.expressionManager;
     if (manager === undefined || manager === null) return;
 
+    // 近似で補う感情は、代替先の重みへ足し込んでから書き込む。
+    const resolved: Record<string, number> = { ...weights };
+    for (const [emotion, targets] of this.#substitutes) {
+      const weight = weights[emotion] ?? 0;
+      if (weight <= 0) continue;
+      for (const target of targets) {
+        const current = resolved[target.name] ?? 0;
+        resolved[target.name] = Math.min(1, Math.max(current, weight * target.scale));
+      }
+    }
+
     for (const key of WRITABLE_KEYS) {
       if (!this.#available.has(key)) continue;
-      manager.setValue(key, weights[key] ?? 0);
+      manager.setValue(key, resolved[key] ?? 0);
     }
   }
 

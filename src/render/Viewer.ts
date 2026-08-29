@@ -180,6 +180,7 @@ export class Viewer {
       textureCount: adapter.textureCount,
       expressionNames: adapter.availableMorphs(),
       expressibleEmotions: adapter.expressibleEmotions(),
+      approximatedEmotions: adapter.approximatedEmotions(),
       rendererName: this.rendererInfo(),
     };
   }

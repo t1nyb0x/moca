@@ -235,6 +235,7 @@ describe("診断", () => {
     textureCount: 12,
     expressionNames: ["neutral", "happy", "sad", "aa", "blink"],
     expressibleEmotions: ["neutral", "happy", "sad"] as const,
+    approximatedEmotions: [] as const,
     rendererName: "ANGLE (NVIDIA)",
   };
 
