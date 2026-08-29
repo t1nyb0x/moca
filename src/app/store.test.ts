@@ -256,6 +256,54 @@ describe("診断", () => {
     expect(instance.getState().modelDiagnostics).toBeNull();
   });
 
+  it("アイドル挙動を切り替えて保存する", async () => {
+    // 要件 F-04-6
+    const instance = store();
+    await instance.getState().setIdleSettings({
+      ...character.idleSettings,
+      lookAt: false,
+    });
+
+    const updated = instance
+      .getState()
+      .characters.find((item) => item.id === "ch1");
+    expect(updated?.idleSettings.lookAt).toBe(false);
+    expect(updated?.idleSettings.blink).toBe(true);
+    expect(mocked.characterUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idleSettings: expect.objectContaining({ lookAt: false }),
+      }),
+    );
+  });
+
+  it("キャラクター未選択なら何もしない", async () => {
+    const instance = store();
+    instance.setState({ activeCharacterId: null });
+    await instance.getState().setIdleSettings(character.idleSettings);
+    expect(mocked.characterUpsert).not.toHaveBeenCalled();
+  });
+
+  it("保存に失敗しても画面には反映したままにする", async () => {
+    // 切り替えの手応えを優先する
+    mocked.characterUpsert.mockRejectedValue({
+      kind: "io",
+      message: "書けません",
+      retryAfterMs: null,
+      status: null,
+    });
+    const instance = store();
+    await instance.getState().setIdleSettings({
+      ...character.idleSettings,
+      breath: false,
+    });
+
+    expect(
+      instance.getState().characters.find((item) => item.id === "ch1")
+        ?.idleSettings.breath,
+    ).toBe(false);
+    expect(instance.getState().error?.kind).toBe("io");
+  });
+
   it("感情を手で指定できる", () => {
     // LLM と同じ経路を通すので、これで顔が変われば経路は生きている
     const instance = store();

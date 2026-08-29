@@ -8,6 +8,7 @@ import type { Conversation } from "@/ipc/generated/Conversation";
 import type { CanonicalEmotion } from "@/domain/emotion/types";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
+import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 import type { ModelHandle } from "@/ipc/generated/ModelHandle";
 import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
@@ -70,6 +71,8 @@ export type AppState = {
   setModelDiagnostics: (diagnostics: ModelDiagnostics | null) => void;
   /** 感情を手で指定する。LLM と同じ経路を通るので切り分けに使える。 */
   previewEmotion: (emotion: CanonicalEmotion) => void;
+  /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
+  setIdleSettings: (idle: IdleSettings) => Promise<void>;
   pickModel: () => Promise<void>;
   openModel: (path: string) => Promise<void>;
   clearModel: () => Promise<void>;
@@ -170,6 +173,28 @@ export function createAppStore(): UseBoundStore<
     setModelDiagnostics: (diagnostics) => set({ modelDiagnostics: diagnostics }),
 
     previewEmotion: (emotion) => set({ emotion: { emotion, intensity: 1 } }),
+
+    setIdleSettings: async (idle) => {
+      const state = get();
+      const character = state.characters.find(
+        (item) => item.id === state.activeCharacterId,
+      );
+      if (character === undefined) return;
+
+      // 先に反映してから保存する。切り替えの手応えを待たせない。
+      const updated = { ...character, idleSettings: idle };
+      set({
+        characters: state.characters.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      });
+
+      try {
+        await ipc.characterUpsert(updated);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
 
     bootstrap: async () => {
       try {

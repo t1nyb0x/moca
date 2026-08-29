@@ -79,6 +79,14 @@ export function ViewerHost(): React.JSX.Element {
         (current) => current.settings?.lipSyncCharsPerSecond ?? 10,
         (rate) => viewer.setLipSyncRate(rate),
       ),
+      store.subscribe(
+        (current) =>
+          current.characters.find((item) => item.id === current.activeCharacterId)
+            ?.idleSettings,
+        (idle) => {
+          if (idle !== undefined) viewer.setIdleSettings(idle);
+        },
+      ),
     ];
 
     return () => {

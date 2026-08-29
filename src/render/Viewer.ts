@@ -69,7 +69,13 @@ export class Viewer {
   readonly #clock = new THREE.Clock();
   readonly #applier = new MorphApplier();
   readonly #resizeObserver: ResizeObserver;
-  /** 視線の向き先。カメラの子にして、サッケードでずらす。 */
+  /**
+   * 視線の向き先。カメラの子にして、サッケードでずらす。
+   *
+   * 原点（カメラの位置そのもの）に置くのが要点。前方へずらすと、見下ろす
+   * 構図のときに向き先が頭より下へ来て、モデルが下を向く。VRM の多くは
+   * 「下を見る」表情でまぶたを下げるため、半目に見えてしまう。
+   */
   readonly #lookAtTarget = new THREE.Object3D();
 
   #adapter: ModelAdapter | null = null;
@@ -102,7 +108,6 @@ export class Viewer {
     this.#camera.position.set(0, 1.3, 2.2);
     this.#scene.add(this.#camera);
 
-    this.#lookAtTarget.position.set(0, 0, -1);
     this.#camera.add(this.#lookAtTarget);
 
     // three r155 以降、光の強さは物理単位で扱われる。three-vrm の公式例に
@@ -217,14 +222,16 @@ export class Viewer {
     const head = adapter.headWorldPosition(new THREE.Vector3());
     const height = adapter.height();
 
+    // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
+    // モデルの視線もそちらへ向いて表情が不自然になる。
     switch (preset) {
       case "face":
         this.#camera.position.set(0, head.y, height * 0.42);
         this.#controls.target.set(0, head.y, 0);
         break;
       case "upper":
-        this.#camera.position.set(0, head.y * 0.95, height * 0.85);
-        this.#controls.target.set(0, head.y * 0.86, 0);
+        this.#camera.position.set(0, head.y, height * 0.8);
+        this.#controls.target.set(0, head.y * 0.93, 0);
         break;
       case "full":
         this.#camera.position.set(0, height * 0.55, height * 1.7);
@@ -272,9 +279,11 @@ export class Viewer {
     if (this.#idle.saccade) {
       this.#saccade = advanceSaccade(this.#saccade, delta);
       // 視線用の表情はモデル側の LookAt が毎フレーム上書きするため、
-      // モーフではなく向き先の位置をずらして表現する。
-      this.#lookAtTarget.position.x = this.#saccade.x / DEFAULT_SACCADE_CONFIG.amplitude * 0.12;
-      this.#lookAtTarget.position.y = this.#saccade.y / DEFAULT_SACCADE_CONFIG.amplitude * 0.08;
+      // モーフではなく向き先の位置をずらして表現する。基準はカメラの位置
+      // そのもの（原点）なので、ここでのずれがそのまま揺らぎになる。
+      const scale = 1 / DEFAULT_SACCADE_CONFIG.amplitude;
+      this.#lookAtTarget.position.x = this.#saccade.x * scale * 0.06;
+      this.#lookAtTarget.position.y = this.#saccade.y * scale * 0.04;
     }
 
     const adapter = this.#adapter;

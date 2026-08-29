@@ -316,6 +316,17 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.diag__idle {
+  margin-top: 0.9rem;
+}
+
+.diag__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0;
+}
+
 .diag__raw {
   margin: 0.2rem 0 0;
   padding: 0.4rem 0.55rem;

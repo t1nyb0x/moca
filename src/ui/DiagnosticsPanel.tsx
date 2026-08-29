@@ -1,6 +1,7 @@
 import { useAppStore } from "@/app/store";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
 import { groupByRole, ROLES, type ExpressionRole } from "@/domain/model/expression-roles";
+import type { IdleSettings } from "@/ipc/generated/IdleSettings";
 
 const ROLE_LABELS: Record<ExpressionRole, string> = {
   emotion: "感情（タグで指定）",
@@ -9,6 +10,14 @@ const ROLE_LABELS: Record<ExpressionRole, string> = {
   lookAt: "視線（自動）",
   custom: "モデル固有（現在は未使用）",
 };
+
+const IDLE_LABELS: { key: keyof IdleSettings; label: string }[] = [
+  { key: "blink", label: "まばたき" },
+  { key: "saccade", label: "視線の揺らぎ" },
+  { key: "lookAt", label: "視線を向ける" },
+  { key: "breath", label: "呼吸" },
+  { key: "springBone", label: "髪の揺れ" },
+];
 
 const EMOTION_LABELS: Record<string, string> = {
   neutral: "平常",
@@ -34,6 +43,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const diagnostics = useAppStore((state) => state.modelDiagnostics);
   const emotion = useAppStore((state) => state.emotion);
   const previewEmotion = useAppStore((state) => state.previewEmotion);
+  const setIdleSettings = useAppStore((state) => state.setIdleSettings);
   const conversation = useAppStore((state) => state.conversation);
   const characters = useAppStore((state) => state.characters);
   const providers = useAppStore((state) => state.providers);
@@ -136,6 +146,30 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
             {(lastAssistant.rawContent ?? lastAssistant.content).slice(0, 300)}
           </p>
         </details>
+      )}
+
+      {character !== undefined && (
+        <div className="diag__idle">
+          <p className="diag__groupLabel">アイドル挙動</p>
+          {IDLE_LABELS.map(({ key, label }) => (
+            <label key={key} className="diag__toggle">
+              <input
+                type="checkbox"
+                checked={character.idleSettings[key]}
+                onChange={(event) =>
+                  void setIdleSettings({
+                    ...character.idleSettings,
+                    [key]: event.target.checked,
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+          <p className="diag__note">
+            まぶたが下がって見えるときは「視線を向ける」を切ってお試しください。
+          </p>
+        </div>
       )}
 
       <p className="diag__note">
