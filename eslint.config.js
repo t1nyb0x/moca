@@ -28,6 +28,14 @@ export default tseslint.config(
     },
   },
 
+  // --- 開発用のスクリプトは Node で動く ---
+  {
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+
   // --- domain: 何にも依存しない純粋ロジック (ADR-0005) ---
   {
     files: ["src/domain/**/*.ts"],
