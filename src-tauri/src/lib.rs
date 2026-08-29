@@ -1,5 +1,6 @@
 pub mod llm;
 pub mod secret;
+pub mod storage;
 
 use tracing_subscriber::EnvFilter;
 

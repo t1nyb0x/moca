@@ -1,5 +1,7 @@
 //! 機密文字列の型による保護 (ADR-0011)。
 
+pub mod store;
+
 use std::fmt;
 
 /// API キーのような機密文字列。

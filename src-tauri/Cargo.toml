@@ -38,6 +38,12 @@ bytes = "1"
 async-trait = "0.1"
 thiserror = "2"
 
+# 機密は Windows 資格情報マネージャーへ (要件 F-11-1)
+keyring = { version = "3", features = ["windows-native"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 wiremock = "0.6"
+tempfile = "3"
