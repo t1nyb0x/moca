@@ -60,6 +60,20 @@ pub struct Settings {
     /// 読めなくなり、利用者の設定が失われる。
     #[serde(default)]
     pub background_color: Option<String>,
+    /// マスコット表示か (要件 F-13-1)。
+    ///
+    /// 復元時にモデルを表示できなければ、この値によらず通常表示で起動する
+    /// (F-13-9)。判断は画面側で行う。
+    #[serde(default)]
+    pub mascot: bool,
+    /// マスコット表示の倍率。画面の高さに対するモデルの背丈の割合 (F-13-3)。
+    #[serde(default = "default_mascot_scale")]
+    pub mascot_scale: f64,
+}
+
+/// 画面の高さの半分を既定とする。
+fn default_mascot_scale() -> f64 {
+    0.5
 }
 
 impl Default for Settings {
@@ -72,6 +86,8 @@ impl Default for Settings {
             lip_sync_chars_per_second: 10.0,
             show_viewer: true,
             background_color: None,
+            mascot: false,
+            mascot_scale: default_mascot_scale(),
         }
     }
 }
@@ -303,6 +319,16 @@ mod tests {
         let json = r#"{"activeCharacterId":null,"logLevel":"info","lipSyncCharsPerSecond":10.0,"showViewer":true}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn マスコットの設定が無い古い記録も読める() {
+        // マスコット表示を足す前に保存された設定を想定する。
+        // これが読めないと利用者の設定が失われる。
+        let json = r#"{"schemaVersion":1,"activeCharacterId":"ch1","logLevel":"info","lipSyncCharsPerSecond":10.0,"showViewer":true,"backgroundColor":null}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(!settings.mascot);
+        assert_eq!(settings.mascot_scale, 0.5);
     }
 
     #[test]

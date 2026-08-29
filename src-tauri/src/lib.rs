@@ -74,6 +74,10 @@ pub fn run() {
             commands::api::tts_speakers,
             commands::api::tts_emotion_axes,
             commands::api::tts_synthesize,
+            commands::window::window_set_mascot,
+            commands::window::window_set_size,
+            commands::window::window_size,
+            commands::window::window_start_drag,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

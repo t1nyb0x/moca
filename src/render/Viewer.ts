@@ -98,6 +98,9 @@ export class Viewer {
   #blink: BlinkState;
   #saccade: SaccadeState;
   #breath: BreathState;
+  /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
+  #framing: FramingPreset | null = null;
+  #refitOnResize = false;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
   #audioLipSync: AudioLipSyncState = createAudioLipSyncState();
@@ -321,6 +324,29 @@ export class Viewer {
     this.#scene.background = color === null ? null : new THREE.Color(color);
   }
 
+  /**
+   * カメラ操作の可否 (要件 F-13-6)。
+   *
+   * マスコット表示では掴む操作を窓の移動へ譲る。掴んで動かす対象はカメラ
+   * ではなくモデルであるため。
+   */
+  setInteractive(enabled: boolean): void {
+    // 止める前に一度そろえる。OrbitControls は内部に減衰用の状態を持って
+    // おり、そこが古いままだと以後の update で元の位置へ引き戻される。
+    this.#controls.update();
+    this.#controls.enabled = enabled;
+  }
+
+  /**
+   * 窓の寸法が変わったら構図を取り直すか (要件 F-13-3)。
+   *
+   * マスコット表示では倍率で窓ごと拡縮するため、寸法が変わるたびに構図が
+   * ずれる。取り直さないと頭や足が切れる。
+   */
+  setRefitOnResize(enabled: boolean): void {
+    this.#refitOnResize = enabled;
+  }
+
   setFraming(preset: FramingPreset): void {
     const adapter = this.#adapter;
     if (adapter === null) return;
@@ -330,6 +356,8 @@ export class Viewer {
 
     // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
     // モデルの視線もそちらへ向いて表情が不自然になる。
+    this.#framing = preset;
+
     switch (preset) {
       case "face":
         this.#camera.position.set(0, head.y, height * 0.42);
@@ -340,7 +368,10 @@ export class Viewer {
         this.#controls.target.set(0, head.y * 0.93, 0);
         break;
       case "full":
-        this.#camera.position.set(0, height * 0.55, height * 1.7);
+        // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
+        // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
+        // 1.07h を確保し、上下におよそ 3% の余白を残す。
+        this.#camera.position.set(0, height * 0.55, height * 2.0);
         this.#controls.target.set(0, height * 0.5, 0);
         break;
     }
@@ -384,6 +415,11 @@ export class Viewer {
     this.#renderer.setSize(width, height, false);
     this.#camera.aspect = width / height;
     this.#camera.updateProjectionMatrix();
+
+    // 窓ごと拡縮するマスコット表示では、寸法が変わるたびに構図を取り直す
+    if (this.#refitOnResize && this.#framing !== null) {
+      this.setFraming(this.#framing);
+    }
   }
 
   #loop = (): void => {

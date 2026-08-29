@@ -19,6 +19,7 @@ import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
 import type { Settings } from "./generated/Settings";
 import type { SpeakerInfo } from "./generated/SpeakerInfo";
 import type { TtsKind } from "./generated/TtsKind";
+import type { WindowSize } from "./generated/WindowSize";
 import { toCommandError } from "./errors";
 
 /** 失敗を必ず CommandError にそろえる。 */
@@ -144,6 +145,24 @@ export const ttsSynthesize = (
   text: string,
   emotion: string,
 ): Promise<ArrayBuffer> => call("tts_synthesize", { characterId, text, emotion });
+
+/**
+ * マスコット表示へ切り替える (要件 F-13-1)。
+ *
+ * 透過は生成時に決まっているため、ここでは枠・影・最前面と、大きさの下限を
+ * 切り替える (ADR-0016)。
+ */
+export const windowSetMascot = (enabled: boolean): Promise<void> =>
+  call("window_set_mascot", { enabled });
+
+export const windowSetSize = (width: number, height: number): Promise<void> =>
+  call("window_set_size", { width, height });
+
+/** マスコット表示へ入る前の大きさを覚えるために読む。 */
+export const windowSize = (): Promise<WindowSize> => call("window_size");
+
+/** 掴んで窓ごと動かす (要件 F-13-6)。 */
+export const windowStartDrag = (): Promise<void> => call("window_start_drag");
 
 export { isCommandError, toCommandError } from "./errors";
 export type { CommandError, CommandErrorKind } from "./errors";

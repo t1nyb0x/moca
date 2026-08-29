@@ -36,6 +36,8 @@ export function ViewerHost(): React.JSX.Element {
     // 初期状態を流し込む
     viewer.setLipSyncRate(state.settings?.lipSyncCharsPerSecond ?? 10);
     viewer.setBackgroundColor(state.settings?.backgroundColor ?? null);
+    viewer.setRefitOnResize(state.mascot);
+    viewer.setInteractive(!state.mascot);
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
@@ -136,6 +138,17 @@ export function ViewerHost(): React.JSX.Element {
       store.subscribe(
         (current) => current.settings?.backgroundColor ?? null,
         (color) => viewer.setBackgroundColor(color),
+      ),
+      // マスコット表示では構図を全身に固定し、カメラ操作を止める (F-13-2、F-13-6)
+      store.subscribe(
+        (current) => current.mascot,
+        (mascot) => {
+          // 構図を先に決めてから止める。逆にすると OrbitControls の減衰用の
+          // 状態が古いまま残り、以後の update で元の位置へ引き戻される。
+          if (mascot) viewer.setFraming("full");
+          viewer.setRefitOnResize(mascot);
+          viewer.setInteractive(!mascot);
+        },
       ),
       store.subscribe(
         (current) =>

@@ -817,3 +817,55 @@ textarea {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* --- マスコット表示 (要件 F-13、ADR-0016) --- */
+
+/*
+  透過はウィンドウ生成時にしか決められないため、窓は常に透過で作られている。
+  通常表示は body の塗りでふさいでおり、この class の間だけ塗りを外す。
+*/
+body.mascot {
+  background: transparent;
+}
+
+body.mascot .app__header,
+body.mascot .chat,
+body.mascot .history,
+body.mascot .vtool {
+  display: none;
+}
+
+/*
+  ビューアの器も塗りを外す。ここを残すとモデルの後ろだけ不透明な板になる。
+  透過にすべき要素は body だけではない。
+*/
+body.mascot .viewer {
+  flex: 1;
+  border-right: none;
+  background: transparent;
+}
+
+.mascot__exit {
+  position: fixed;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 10;
+  opacity: 0.25;
+  transition: opacity 0.15s;
+}
+
+.mascot__exit:hover,
+.mascot__exit:focus-visible {
+  opacity: 1;
+}
+
+.vtool__scale {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85em;
+}
+
+.vtool__scale input {
+  width: 6rem;
+}

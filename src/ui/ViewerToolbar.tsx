@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 
 import { useAppStore } from "@/app/store";
+import { MAX_SCALE, MIN_SCALE } from "@/domain/mascot/window";
 import type { Viewer, FramingPreset } from "@/render/Viewer";
 
 const FRAMINGS: { preset: FramingPreset; label: string }[] = [
@@ -27,6 +28,8 @@ export function ViewerToolbar({
   const backgroundColor = useAppStore((state) => state.settings?.backgroundColor ?? null);
   const saveCameraState = useAppStore((state) => state.saveCameraState);
   const setBackgroundColor = useAppStore((state) => state.setBackgroundColor);
+  const mascotScale = useAppStore((state) => state.settings?.mascotScale ?? 0.5);
+  const setMascotScale = useAppStore((state) => state.setMascotScale);
 
   const character = characters.find((item) => item.id === activeCharacterId);
   const saved = character?.cameraPreset ?? null;
@@ -73,6 +76,23 @@ export function ViewerToolbar({
         >
           忘れる
         </button>
+      </div>
+
+      {/* 机の上に置いたときの大きさ (要件 F-13-3)。マスコット表示中は
+          ホイールでも変えられる。 */}
+      <div className="vtool__row">
+        <label className="vtool__scale" title="机の上に置いたときの大きさです">
+          倍率
+          <input
+            type="range"
+            min={MIN_SCALE}
+            max={MAX_SCALE}
+            step={0.05}
+            value={mascotScale}
+            onChange={(event) => void setMascotScale(Number(event.target.value))}
+          />
+          <span>{Math.round(mascotScale * 100)}%</span>
+        </label>
       </div>
 
       <div className="vtool__row">

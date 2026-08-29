@@ -17,6 +17,12 @@ import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
 import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import {
+  canEnterMascot,
+  clampScale,
+  DEFAULT_SCALE,
+  mascotWindowSize,
+} from "@/domain/mascot/window";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
@@ -93,6 +99,14 @@ export type AppState = {
   /** 読み込んだモデルの素性。原因の切り分けに使う。 */
   modelDiagnostics: ModelDiagnostics | null;
   showViewer: boolean;
+  /** マスコット表示か (要件 F-13-1)。 */
+  mascot: boolean;
+  /**
+   * マスコット表示へ入る前の窓の大きさ。戻るときに復元する。
+   *
+   * 保存はしない。次の起動では通常表示の既定に従えばよい。
+   */
+  normalSize: { readonly width: number; readonly height: number } | null;
 
   bootstrap: () => Promise<void>;
   setActiveCharacter: (id: string | null) => Promise<void>;
@@ -131,7 +145,21 @@ export type AppState = {
   openModel: (path: string) => Promise<void>;
   clearModel: () => Promise<void>;
   setShowViewer: (show: boolean) => Promise<void>;
+  /**
+   * マスコット表示を切り替える (要件 F-13-1)。
+   *
+   * モデルが表示されていなければ入れない。全面が透明になり、全面が
+   * クリックスルーとなって操作できない窓が残るため。
+   */
+  setMascot: (enabled: boolean) => Promise<void>;
+  /** マスコット表示の倍率 (要件 F-13-3)。範囲へ収めてから保存する。 */
+  setMascotScale: (scale: number) => Promise<void>;
 };
+
+/** 画面の高さ。取れない環境では窓の寸法側が既定へ倒す。 */
+function screenHeight(): number {
+  return typeof window === "undefined" ? 0 : window.screen.height;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -276,6 +304,8 @@ export function createAppStore(): UseBoundStore<
     model: null,
     modelDiagnostics: null,
     showViewer: true,
+    mascot: false,
+    normalSize: null,
 
     clearError: () => set({ error: null }),
 
@@ -361,6 +391,71 @@ export function createAppStore(): UseBoundStore<
       }
     },
 
+    setMascot: async (enabled) => {
+      const state = get();
+      if (state.mascot === enabled) return;
+      // 描かれるものが無ければ入れない (要件 F-13-1)。逃げ道を用意するのでは
+      // なく、操作できない窓になる状態そのものを避ける。
+      if (
+        enabled &&
+        !canEnterMascot({ hasModel: state.model !== null, showViewer: state.showViewer })
+      ) {
+        return;
+      }
+
+      try {
+        // 入る前の大きさを覚えておき、戻るときに復元する
+        const normalSize = enabled ? await ipc.windowSize() : state.normalSize;
+        set({ mascot: enabled, normalSize });
+
+        await ipc.windowSetMascot(enabled);
+
+        const size = enabled
+          ? mascotWindowSize(
+              state.settings?.mascotScale ?? DEFAULT_SCALE,
+              screenHeight(),
+            )
+          : (normalSize ?? { width: 1100, height: 720 });
+        await ipc.windowSetSize(size.width, size.height);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, mascot: enabled };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    setMascotScale: async (scale) => {
+      const state = get();
+      const clamped = clampScale(scale);
+
+      if (state.mascot) {
+        const size = mascotWindowSize(clamped, screenHeight());
+        try {
+          await ipc.windowSetSize(size.width, size.height);
+        } catch (error) {
+          set({ error: error as CommandError });
+        }
+      }
+
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, mascotScale: clamped };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
     setProvider: async (providerId) => {
       const state = get();
       const character = state.characters.find(
@@ -409,6 +504,10 @@ export function createAppStore(): UseBoundStore<
         if (active?.modelPath != null) {
           await get().openModel(active.modelPath);
         }
+
+        // 復元はモデルを出せたときだけ (要件 F-13-9)。ここを守らないと、
+        // 読み込みに失敗した起動が操作できないアプリになる。
+        if (settings.mascot) await get().setMascot(true);
       } catch (error) {
         set({ error: error as CommandError });
       }
@@ -445,11 +544,15 @@ export function createAppStore(): UseBoundStore<
     },
 
     clearModel: async () => {
+      // モデルが消えると全面が透明になる。先に通常表示へ戻す (要件 F-13-10)。
+      await get().setMascot(false);
       set({ model: null, modelDiagnostics: null });
       await get().persistModelPath(null);
     },
 
     setShowViewer: async (show) => {
+      // 3D を隠すと描かれるものが無くなる (要件 F-13-10)。
+      if (!show) await get().setMascot(false);
       set({ showViewer: show });
       const settings = get().settings;
       if (settings === null) return;

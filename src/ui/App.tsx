@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { useAppStore } from "@/app/store";
+import { canEnterMascot } from "@/domain/mascot/window";
+import { windowStartDrag } from "@/ipc";
 import { ChatPanel } from "./ChatPanel";
 import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
@@ -20,6 +22,10 @@ export function App(): React.JSX.Element {
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
   const setActiveCharacter = useAppStore((state) => state.setActiveCharacter);
   const setProvider = useAppStore((state) => state.setProvider);
+  const mascot = useAppStore((state) => state.mascot);
+  const setMascot = useAppStore((state) => state.setMascot);
+  const mascotScale = useAppStore((state) => state.settings?.mascotScale ?? 0.5);
+  const setMascotScale = useAppStore((state) => state.setMascotScale);
   const newConversation = useAppStore((state) => state.newConversation);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const status = useAppStore((state) => state.status);
@@ -37,13 +43,38 @@ export function App(): React.JSX.Element {
 
   const character = characters.find((item) => item.id === activeCharacterId);
   const provider = providers.find((item) => item.id === character?.providerId);
+  const mascotReady = canEnterMascot({ hasModel: model !== null, showViewer });
+
+  // 透過の塗りを外すのは body。ここだけは React の外に出す必要がある
+  useEffect(() => {
+    document.body.classList.toggle("mascot", mascot);
+    return () => document.body.classList.remove("mascot");
+  }, [mascot]);
+
+  /**
+   * 掴んで窓ごと動かす (要件 F-13-6)。
+   *
+   * 枠を消すと掴む場所が無くなるため、モデルの上をそのまま取っ手にする。
+   * ボタンの上では拾わない。押せなくなるため。
+   */
+  const startDrag = (event: React.MouseEvent): void => {
+    if (!mascot || event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button, input, select") !== null) return;
+    void windowStartDrag();
+  };
+
+  /** マスコット表示では道具立てを出せないので、ホイールで大きさを変える。 */
+  const wheelScale = (event: React.WheelEvent): void => {
+    if (!mascot) return;
+    void setMascotScale(mascotScale + (event.deltaY < 0 ? 0.05 : -0.05));
+  };
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
 
   return (
-    <div className="app">
+    <div className="app" onMouseDown={startDrag} onWheel={wheelScale}>
       <header className="app__header">
         <span className="app__title">moca</span>
 
@@ -137,6 +168,22 @@ export function App(): React.JSX.Element {
         <button type="button" onClick={() => setSettingsOpen(true)}>
           設定
         </button>
+        {/*
+          マスコット表示はモデルが出ているときだけ (要件 F-13-1)。描かれる
+          ものが無いと全面が透明になり、操作できない窓が残る。
+        */}
+        <button
+          type="button"
+          disabled={!mascotReady}
+          title={
+            mascotReady
+              ? "枠を消して机の上に置きます"
+              : "モデルを表示しているときだけ使えます"
+          }
+          onClick={() => void setMascot(true)}
+        >
+          机に置く
+        </button>
       </header>
 
       {/*
@@ -177,6 +224,18 @@ export function App(): React.JSX.Element {
           この接続先は感情タグが無効です。返答に応じた表情の変化は起きません。
           設定の接続先から切り替えられます。
         </p>
+      )}
+
+      {/* マスコット表示から戻る唯一の手がかり。常に掴める場所へ置く。 */}
+      {mascot && (
+        <button
+          type="button"
+          className="mascot__exit"
+          title="通常の表示に戻します"
+          onClick={() => void setMascot(false)}
+        >
+          戻る
+        </button>
       )}
 
       <main className="app__main">

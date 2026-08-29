@@ -7,4 +7,15 @@ export type Settings = { schemaVersion: number, activeCharacterId: string | null
  * 後から足した項目なので default が要る。無いと既存の設定ファイルが
  * 読めなくなり、利用者の設定が失われる。
  */
-backgroundColor: string | null, };
+backgroundColor: string | null, 
+/**
+ * マスコット表示か (要件 F-13-1)。
+ *
+ * 復元時にモデルを表示できなければ、この値によらず通常表示で起動する
+ * (F-13-9)。判断は画面側で行う。
+ */
+mascot: boolean, 
+/**
+ * マスコット表示の倍率。画面の高さに対するモデルの背丈の割合 (F-13-3)。
+ */
+mascotScale: number, };
