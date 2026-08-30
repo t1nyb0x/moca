@@ -398,6 +398,7 @@ describe("モデル", () => {
         baseUrl: "http://127.0.0.1:3000",
         speaker: "花隈千冬",
         emotionPresets: {},
+        emotionStrength: 1,
       },
     };
 

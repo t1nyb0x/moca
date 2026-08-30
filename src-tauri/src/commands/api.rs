@@ -168,8 +168,11 @@ pub async fn tts_synthesize(
     character_id: String,
     text: String,
     emotion: String,
+    intensity: f64,
 ) -> Result<tauri::ipc::Response> {
-    let audio = state.tts_synthesize(&character_id, &text, &emotion).await?;
+    let audio = state
+        .tts_synthesize(&character_id, &text, &emotion, intensity)
+        .await?;
     Ok(tauri::ipc::Response::new(audio))
 }
 

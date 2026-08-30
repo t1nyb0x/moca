@@ -34,7 +34,13 @@ export class SpeechQueue {
   enqueue(characterId: string, segment: SpeechSegment): void {
     const generation = this.#generation;
     // 待ち行列に入っているあいだの棄却を、処理されない拒否にしない。
-    const pending = ttsSynthesize(characterId, segment.text, segment.cue.emotion).then(
+    // 強さも渡す。名前だけだと [happy:0.3] も [happy:1.0] も同じ声になる。
+    const pending = ttsSynthesize(
+      characterId,
+      segment.text,
+      segment.cue.emotion,
+      segment.cue.intensity,
+    ).then(
       (wav) => ({ wav, error: null }),
       (error: unknown) => ({ wav: null, error }),
     );

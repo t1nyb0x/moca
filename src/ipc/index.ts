@@ -146,7 +146,9 @@ export const ttsSynthesize = (
   characterId: string,
   text: string,
   emotion: string,
-): Promise<ArrayBuffer> => call("tts_synthesize", { characterId, text, emotion });
+  intensity: number,
+): Promise<ArrayBuffer> =>
+  call("tts_synthesize", { characterId, text, emotion, intensity });
 
 /**
  * マスコット表示へ切り替える (要件 F-13-1)。

@@ -35,6 +35,7 @@ export function emptyVoiceSettings(): VoiceSettings {
     baseUrl: DEFAULT_BASE_URL.voicevox,
     speaker: "",
     emotionPresets: {},
+    emotionStrength: 1,
   };
 }
 
@@ -182,6 +183,29 @@ export function VoiceSettingsForm({
         </button>
       </div>
       {status !== null && <p className="form__note">{status}</p>}
+
+      {/*
+        タグの強さに素直に従うと、文ごとに声色が振れて落ち着かない。全体を
+        抑えられるようにする (要件 F-12-3)。0 なら常に中立の声で読み上げる。
+      */}
+      <label>
+        感情の効き具合
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={value.emotionStrength}
+          onChange={(event) =>
+            patch({ emotionStrength: Number(event.target.value) })
+          }
+        />
+        <span>{Math.round(value.emotionStrength * 100)}%</span>
+      </label>
+      <p className="form__note">
+        感情タグの強さに掛ける割合です。声色の振れが大きいと感じるときは
+        下げてください。0 にすると常に中立の声で読み上げます。
+      </p>
 
       {/*
         割り当てが空のときは感情成分を一切送らないため、合成器側に残っている
