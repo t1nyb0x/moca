@@ -98,6 +98,17 @@ export class Viewer {
   #blink: BlinkState;
   #saccade: SaccadeState;
   #breath: BreathState;
+  /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
+  #framing: FramingPreset | null = null;
+  /**
+   * 読み込みの世代。追い越しを捨てるために使う。
+   *
+   * `setModel` は読み込みのあいだ待つ。その間に次の指示が来ると、古いほうも
+   * 完了して場面へ足されてしまう。二体が重なり、表情の制御を受けるのは後から
+   * 代入された片方だけになるため、もう一体が既定の姿のまま残る。
+   */
+  #loadGeneration = 0;
+  #refitOnResize = false;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
   #audioLipSync: AudioLipSyncState = createAudioLipSyncState();
@@ -118,6 +129,13 @@ export class Viewer {
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
+  /**
+   * カメラ操作が一段落したときに呼ばれる。
+   *
+   * 位置を覚えさせる用 (要件 F-03-5)。動かしている最中ではなく、手を離した
+   * ところで知らせる。毎フレーム保存すると書き込みが際限なく増える。
+   */
+  onCameraSettled: (() => void) | null = null;
 
   constructor(container: HTMLElement, seed: number = Date.now()) {
     this.#container = container;
@@ -147,6 +165,7 @@ export class Viewer {
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
     this.#controls.target.set(0, 1.2, 0);
     this.#controls.enableDamping = true;
+    this.#controls.addEventListener("end", () => this.onCameraSettled?.());
     this.#controls.update();
 
     this.#blink = createBlinkState(seed);
@@ -197,11 +216,20 @@ export class Viewer {
 
   /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
   async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
+    const generation = ++this.#loadGeneration;
     this.#clearModel();
     if (context === null) return null;
 
     const adapter =
       context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
+
+    // 待っているあいだに次の指示が来ていたら、出来たものは捨てる。
+    // 足すと場面に二体並び、片方が既定の姿のまま残る。
+    if (generation !== this.#loadGeneration) {
+      adapter.dispose();
+      return null;
+    }
+
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
@@ -321,6 +349,29 @@ export class Viewer {
     this.#scene.background = color === null ? null : new THREE.Color(color);
   }
 
+  /**
+   * カメラ操作の可否 (要件 F-13-6)。
+   *
+   * マスコット表示では掴む操作を窓の移動へ譲る。掴んで動かす対象はカメラ
+   * ではなくモデルであるため。
+   */
+  setInteractive(enabled: boolean): void {
+    // 止める前に一度そろえる。OrbitControls は内部に減衰用の状態を持って
+    // おり、そこが古いままだと以後の update で元の位置へ引き戻される。
+    this.#controls.update();
+    this.#controls.enabled = enabled;
+  }
+
+  /**
+   * 窓の寸法が変わったら構図を取り直すか (要件 F-13-3)。
+   *
+   * マスコット表示では倍率で窓ごと拡縮するため、寸法が変わるたびに構図が
+   * ずれる。取り直さないと頭や足が切れる。
+   */
+  setRefitOnResize(enabled: boolean): void {
+    this.#refitOnResize = enabled;
+  }
+
   setFraming(preset: FramingPreset): void {
     const adapter = this.#adapter;
     if (adapter === null) return;
@@ -330,6 +381,8 @@ export class Viewer {
 
     // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
     // モデルの視線もそちらへ向いて表情が不自然になる。
+    this.#framing = preset;
+
     switch (preset) {
       case "face":
         this.#camera.position.set(0, head.y, height * 0.42);
@@ -340,7 +393,10 @@ export class Viewer {
         this.#controls.target.set(0, head.y * 0.93, 0);
         break;
       case "full":
-        this.#camera.position.set(0, height * 0.55, height * 1.7);
+        // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
+        // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
+        // 1.07h を確保し、上下におよそ 3% の余白を残す。
+        this.#camera.position.set(0, height * 0.55, height * 2.0);
         this.#controls.target.set(0, height * 0.5, 0);
         break;
     }
@@ -384,6 +440,11 @@ export class Viewer {
     this.#renderer.setSize(width, height, false);
     this.#camera.aspect = width / height;
     this.#camera.updateProjectionMatrix();
+
+    // 窓ごと拡縮するマスコット表示では、寸法が変わるたびに構図を取り直す
+    if (this.#refitOnResize && this.#framing !== null) {
+      this.setFraming(this.#framing);
+    }
   }
 
   #loop = (): void => {

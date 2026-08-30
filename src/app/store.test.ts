@@ -5,6 +5,7 @@ import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { ChatResult } from "@/ipc/generated/ChatResult";
+import { MIN_SCALE } from "@/domain/mascot/window";
 
 vi.mock("@/ipc", () => ({
   settingsGet: vi.fn(),
@@ -21,6 +22,10 @@ vi.mock("@/ipc", () => ({
   conversationsIndex: vi.fn(),
   conversationDelete: vi.fn(),
   ttsSynthesize: vi.fn(),
+  windowSetMascot: vi.fn(),
+  windowSetSize: vi.fn(),
+  windowSize: vi.fn(),
+  windowStartDrag: vi.fn(),
   toCommandError: (error: unknown) => error,
 }));
 
@@ -36,6 +41,8 @@ const settings: Settings = {
   lipSyncCharsPerSecond: 10,
   showViewer: true,
   backgroundColor: null,
+  mascot: false,
+  mascotScale: 0.5,
 };
 
 const provider: ProviderProfileDto = {
@@ -347,6 +354,34 @@ describe("モデル", () => {
     expect(mocked.characterUpsert).not.toHaveBeenCalled();
   });
 
+  it("マスコット表示で保存されていてもモデルが無ければ通常表示で起動する", async () => {
+    // 要件 F-13-9。ここを守らないと、起動した瞬間から操作できないアプリになる
+    mocked.settingsGet.mockResolvedValue({ ...settings, mascot: true });
+    mocked.providersList.mockResolvedValue([provider]);
+    mocked.charactersList.mockResolvedValue([character]); // modelPath は null
+
+    const instance = createAppStore();
+    await instance.getState().bootstrap();
+
+    expect(instance.getState().mascot).toBe(false);
+    expect(mocked.windowSetMascot).not.toHaveBeenCalledWith(true);
+  });
+
+  it("マスコット表示で保存されモデルも復元できれば、その表示で起動する", async () => {
+    mocked.settingsGet.mockResolvedValue({ ...settings, mascot: true });
+    mocked.providersList.mockResolvedValue([provider]);
+    mocked.charactersList.mockResolvedValue([
+      { ...character, modelPath: handle.path, modelFormat: "vrm" as const },
+    ]);
+    mocked.modelOpen.mockResolvedValue(handle);
+
+    const instance = createAppStore();
+    await instance.getState().bootstrap();
+
+    expect(instance.getState().mascot).toBe(true);
+    expect(mocked.windowSetMascot).toHaveBeenCalledWith(true);
+  });
+
   it("パスの保存に失敗してもエラーとして保持する", async () => {
     mocked.characterUpsert.mockRejectedValue({
       kind: "io",
@@ -536,6 +571,104 @@ describe("診断", () => {
         instance.getState().characters.find((item) => item.id === "ch1")?.providerId,
       ).toBe("p2");
       expect(instance.getState().error?.kind).toBe("io");
+    });
+  });
+
+  describe("マスコット表示", () => {
+    /** モデルを読み込んで 3D を出している状態にする。 */
+    function shown() {
+      const instance = store();
+      instance.setState({ model: handle, showViewer: true });
+      return instance;
+    }
+
+    it("モデルが出ていれば入れる", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+
+      expect(instance.getState().mascot).toBe(true);
+      expect(mocked.windowSetMascot).toHaveBeenCalledWith(true);
+      expect(mocked.windowSetSize).toHaveBeenCalled();
+    });
+
+    it("モデルが無ければ入れない", async () => {
+      // 全面が透明になり、全面がクリックスルーになる (F-13-1)
+      const instance = store();
+      instance.setState({ model: null, showViewer: true });
+
+      await instance.getState().setMascot(true);
+
+      expect(instance.getState().mascot).toBe(false);
+      expect(mocked.windowSetMascot).not.toHaveBeenCalled();
+    });
+
+    it("3D ビューを隠していれば入れない", async () => {
+      const instance = store();
+      instance.setState({ model: handle, showViewer: false });
+
+      await instance.getState().setMascot(true);
+
+      expect(instance.getState().mascot).toBe(false);
+      expect(mocked.windowSetMascot).not.toHaveBeenCalled();
+    });
+
+    it("モデルを外すと通常表示へ戻る", async () => {
+      // 要件 F-13-10。操作できない窓を残さない
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      vi.clearAllMocks();
+
+      await instance.getState().clearModel();
+
+      expect(instance.getState().mascot).toBe(false);
+      expect(mocked.windowSetMascot).toHaveBeenCalledWith(false);
+    });
+
+    it("3D ビューを隠すと通常表示へ戻る", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      vi.clearAllMocks();
+
+      await instance.getState().setShowViewer(false);
+
+      expect(instance.getState().mascot).toBe(false);
+      expect(mocked.windowSetMascot).toHaveBeenCalledWith(false);
+    });
+
+    it("戻るときは入る前の大きさへ復元する", async () => {
+      mocked.windowSize.mockResolvedValue({ width: 1400, height: 900 });
+      const instance = shown();
+
+      await instance.getState().setMascot(true);
+      await instance.getState().setMascot(false);
+
+      expect(mocked.windowSetSize).toHaveBeenLastCalledWith(1400, 900);
+    });
+
+    it("倍率は範囲へ収めて保存する", async () => {
+      const instance = shown();
+      await instance.getState().setMascotScale(0);
+
+      expect(instance.getState().settings?.mascotScale).toBe(MIN_SCALE);
+      expect(mocked.settingsSet).toHaveBeenCalledWith(
+        expect.objectContaining({ mascotScale: MIN_SCALE }),
+      );
+    });
+
+    it("表示中に倍率を変えると窓も追従する", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      vi.clearAllMocks();
+
+      await instance.getState().setMascotScale(0.8);
+
+      expect(mocked.windowSetSize).toHaveBeenCalled();
+    });
+
+    it("表示していなければ窓は触らない", async () => {
+      const instance = shown();
+      await instance.getState().setMascotScale(0.8);
+      expect(mocked.windowSetSize).not.toHaveBeenCalled();
     });
   });
 
