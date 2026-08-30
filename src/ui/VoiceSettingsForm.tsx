@@ -91,6 +91,19 @@ export function VoiceSettingsForm({
           ? []
           : await ipc.ttsEmotionAxes(value.kind, value.baseUrl, speaker);
         setAxes(names);
+
+        // 割り当てが空のままだと感情成分を一切送らず、CeVIO 側に残っている
+        // 値がずっと使われ続ける。押し忘れで感情が固まるので、まだ作られて
+        // いなければここで作る。作ったあとは手で直せる。
+        const assigned = Object.keys(value.emotionPresets).length > 0;
+        if (!assigned && names.length > 0) {
+          applyDefaults(names);
+          setStatus(
+            `${found.length} 名の話者が見つかりました。感情ごとの声を既定の組み合わせにしました`,
+          );
+          return;
+        }
+
         setStatus(`${found.length} 名の話者が見つかりました`);
       } catch (error) {
         setSpeakers([]);
@@ -102,13 +115,12 @@ export function VoiceSettingsForm({
     })();
   };
 
-  const applyDefaults = (): void => {
-    const defaults = resolveDefaultPresets(axes);
+  const applyDefaults = (names: readonly string[] = axes): void => {
+    const defaults = resolveDefaultPresets(names);
     const emotionPresets = Object.fromEntries(
       CANONICAL_EMOTIONS.map((emotion) => [emotion, defaults[emotion]]),
     );
     patch({ emotionPresets });
-    setStatus("感情ごとの声を既定の組み合わせにしました");
   };
 
   const setPreset = (emotion: CanonicalEmotion, next: VoicePreset): void =>
@@ -157,11 +169,31 @@ export function VoiceSettingsForm({
         <button type="button" disabled={busy} onClick={probe}>
           接続を確かめる
         </button>
-        <button type="button" disabled={speakers.length === 0} onClick={applyDefaults}>
-          感情の割り当てを作る
+        <button
+          type="button"
+          disabled={speakers.length === 0}
+          onClick={() => {
+            // 引数なしで呼ぶ。そのまま渡すとクリックの事象が成分名として届く。
+            applyDefaults();
+            setStatus("感情ごとの声を既定の組み合わせにしました");
+          }}
+        >
+          感情の割り当てを作り直す
         </button>
       </div>
       {status !== null && <p className="form__note">{status}</p>}
+
+      {/*
+        割り当てが空のときは感情成分を一切送らないため、合成器側に残っている
+        値がずっと使われる。押し忘れていると感情が固まったままになる。
+      */}
+      {value.enabled && Object.keys(value.emotionPresets).length === 0 && (
+        <p className="banner banner--notice" role="status">
+          感情ごとの声がまだ割り当てられていません。このままだと合成器側に
+          残っている値で読み上げられ、感情によって声が変わりません。
+          「接続を確かめる」を押すと既定の組み合わせを作ります。
+        </p>
+      )}
 
       <label>
         話者
