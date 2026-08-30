@@ -11,7 +11,7 @@ function samples(seconds: number, dt = 1 / 60, tempo = 1): number[] {
   const out: number[] = [];
   for (let t = 0; t < seconds; t += dt) {
     state = advanceIdleMotion(state, dt, tempo);
-    out.push(evaluateIdleMotion(state).hips?.z ?? 0);
+    out.push(evaluateIdleMotion(state).spine?.z ?? 0);
   }
   return out;
 }
@@ -60,18 +60,26 @@ describe("evaluateIdleMotion", () => {
 
   it("倍率を上げると振れも大きくなる", () => {
     const state = advanceIdleMotion(createIdleMotionState(), 1.5);
-    const small = Math.abs(evaluateIdleMotion(state, 0.5).hips?.z ?? 0);
-    const large = Math.abs(evaluateIdleMotion(state, 1.5).hips?.z ?? 0);
+    const small = Math.abs(evaluateIdleMotion(state, 0.5).spine?.z ?? 0);
+    const large = Math.abs(evaluateIdleMotion(state, 1.5).spine?.z ?? 0);
     expect(large).toBeGreaterThan(small);
   });
 
-  it("腰と上半身は逆へ返す", () => {
-    // 同じ向きだと体が折れて見える
+  it("腰は回さない", () => {
+    // 腰は骨格の根なので、回すと脚ごと振れて吊り下げられたように見える
+    for (let t = 0.5; t < 20; t += 0.7) {
+      const state = advanceIdleMotion(createIdleMotionState(), t);
+      expect(evaluateIdleMotion(state).hips).toBeUndefined();
+    }
+  });
+
+  it("背骨と胸は逆へ返す", () => {
+    // 同じ向きだと体が一枚板に見える
     const state = advanceIdleMotion(createIdleMotionState(), 1.5);
     const pose = evaluateIdleMotion(state);
-    const hips = pose.hips?.z ?? 0;
     const spine = pose.spine?.z ?? 0;
-    expect(Math.sign(hips)).toBe(-Math.sign(spine));
+    const chest = pose.chest?.z ?? 0;
+    expect(Math.sign(spine)).toBe(-Math.sign(chest));
   });
 
   it("周期の違う波が重なっている", () => {
