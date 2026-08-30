@@ -179,6 +179,16 @@ pub struct VoiceSettings {
     /// 正規化感情ごとの声の作り方。
     #[serde(default)]
     pub emotion_presets: std::collections::BTreeMap<String, VoicePreset>,
+    /// 感情の効き具合 (要件 F-12-3)。0.0 で中立のまま、1.0 で割り当てどおり。
+    ///
+    /// タグの強さに素直に従うと、文ごとに声色が振れて落ち着かない。ここで
+    /// 全体を抑えられるようにする。
+    #[serde(default = "default_emotion_strength")]
+    pub emotion_strength: f64,
+}
+
+fn default_emotion_strength() -> f64 {
+    1.0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

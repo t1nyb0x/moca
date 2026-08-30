@@ -4,6 +4,7 @@
 //! 前者は話者ごとのスタイル選択、後者は成分ごとの数値。差異はこの
 //! モジュールに閉じ込め、呼び出し側は正規化感情だけを扱う。
 
+pub mod blend;
 pub mod error;
 pub mod http;
 pub mod shirataki;

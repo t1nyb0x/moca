@@ -5,6 +5,7 @@
  * ここで手書きしてはならない。
  */
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import type { ChatResult } from "./generated/ChatResult";
 import type { ChatStreamRequest } from "./generated/ChatStreamRequest";
@@ -145,7 +146,9 @@ export const ttsSynthesize = (
   characterId: string,
   text: string,
   emotion: string,
-): Promise<ArrayBuffer> => call("tts_synthesize", { characterId, text, emotion });
+  intensity: number,
+): Promise<ArrayBuffer> =>
+  call("tts_synthesize", { characterId, text, emotion, intensity });
 
 /**
  * マスコット表示へ切り替える (要件 F-13-1)。
@@ -176,6 +179,15 @@ export const windowSetClickThrough = (ignore: boolean): Promise<void> =>
 
 /** 掴んで窓ごと動かす (要件 F-13-6)。 */
 export const windowStartDrag = (): Promise<void> => call("window_start_drag");
+
+/**
+ * トレイからの表示切り替えを受け取る (要件 F-13-7)。
+ *
+ * 窓を直に触らせず通知だけを受けるのは、モデルが出ていなければ入れないと
+ * いった判断 (F-13-1、F-13-10) を画面側に集めておくため。
+ */
+export const onMascotToggle = (handler: () => void): Promise<() => void> =>
+  listen("mascot://toggle", () => handler());
 
 export { isCommandError, toCommandError } from "./errors";
 export type { CommandError, CommandErrorKind } from "./errors";

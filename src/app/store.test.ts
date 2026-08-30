@@ -5,7 +5,7 @@ import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { ChatResult } from "@/ipc/generated/ChatResult";
-import { DEFAULT_ASPECT, MIN_SCALE } from "@/domain/mascot/window";
+import { CHAT_EXTRA_WIDTH, DEFAULT_ASPECT, MIN_SCALE } from "@/domain/mascot/window";
 
 vi.mock("@/ipc", () => ({
   settingsGet: vi.fn(),
@@ -22,6 +22,7 @@ vi.mock("@/ipc", () => ({
   conversationsIndex: vi.fn(),
   conversationDelete: vi.fn(),
   ttsSynthesize: vi.fn(),
+  ttsEmotionAxes: vi.fn(),
   windowSetMascot: vi.fn(),
   windowSetClickThrough: vi.fn(),
   windowCursorPosition: vi.fn(),
@@ -388,6 +389,78 @@ describe("モデル", () => {
     expect(mocked.windowSetMascot).toHaveBeenCalledWith(true);
   });
 
+  describe("感情ごとの声の割り当て", () => {
+    const voiced: CharacterProfile = {
+      ...character,
+      voiceSettings: {
+        enabled: true,
+        kind: "shirataki",
+        baseUrl: "http://127.0.0.1:3000",
+        speaker: "花隈千冬",
+        emotionPresets: {},
+        emotionStrength: 1,
+      },
+    };
+
+    async function boot(active: CharacterProfile) {
+      mocked.settingsGet.mockResolvedValue(settings);
+      mocked.providersList.mockResolvedValue([provider]);
+      mocked.charactersList.mockResolvedValue([active]);
+      const instance = createAppStore();
+      await instance.getState().bootstrap();
+      return instance;
+    }
+
+    it("割り当てが空なら成分を取り込んで作る", async () => {
+      // 空のままだと成分を一切送らず、合成器側に残った値で読み上げられる
+      mocked.ttsEmotionAxes.mockResolvedValue(["嬉しい", "普通", "怒り"]);
+
+      const instance = await boot(voiced);
+
+      expect(mocked.ttsEmotionAxes).toHaveBeenCalledWith(
+        "shirataki",
+        "http://127.0.0.1:3000",
+        "花隈千冬",
+      );
+      const saved = mocked.characterUpsert.mock.calls[0]?.[0] as CharacterProfile;
+      const presets = saved.voiceSettings?.emotionPresets ?? {};
+      expect(Object.keys(presets).length).toBeGreaterThan(0);
+      expect(presets.happy?.components["嬉しい"]).toBeGreaterThan(0);
+      expect(instance.getState().error).toBeNull();
+    });
+
+    it("すでに割り当てがあれば触らない", async () => {
+      await boot({
+        ...voiced,
+        voiceSettings: {
+          ...voiced.voiceSettings!,
+          emotionPresets: { happy: { speaker: null, components: {}, speed: null, pitch: null, intonation: null } },
+        },
+      });
+      expect(mocked.ttsEmotionAxes).not.toHaveBeenCalled();
+    });
+
+    it("音声が無効なら触らない", async () => {
+      await boot({ ...voiced, voiceSettings: { ...voiced.voiceSettings!, enabled: false } });
+      expect(mocked.ttsEmotionAxes).not.toHaveBeenCalled();
+    });
+
+    it("成分が取れなくても起動を妨げない", async () => {
+      // 合成器が動いていないだけ。会話は成り立つ
+      mocked.ttsEmotionAxes.mockRejectedValue({
+        kind: "network",
+        message: "つながりません",
+        retryAfterMs: null,
+        status: null,
+      });
+
+      const instance = await boot(voiced);
+
+      expect(mocked.characterUpsert).not.toHaveBeenCalled();
+      expect(instance.getState().error).toBeNull();
+    });
+  });
+
   it("パスの保存に失敗してもエラーとして保持する", async () => {
     mocked.characterUpsert.mockRejectedValue({
       kind: "io",
@@ -708,6 +781,51 @@ describe("診断", () => {
       const instance = shown();
       instance.getState().setModelAspect(0.35);
       expect(mocked.windowSetSize).not.toHaveBeenCalled();
+    });
+
+    it("吹き出しを開くと窓が広がる", async () => {
+      // 窓はモデルの幅ぴったりなので、話すには広げるしかない (要件 F-13-8)
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      const closed = mocked.windowSetSize.mock.calls[0]?.[0] as number;
+      vi.clearAllMocks();
+
+      await instance.getState().setMascotChat(true);
+
+      expect(instance.getState().mascotChat).toBe(true);
+      expect(mocked.windowSetSize).toHaveBeenCalledWith(
+        closed + CHAT_EXTRA_WIDTH,
+        expect.any(Number),
+      );
+    });
+
+    it("吹き出しを閉じると窓も戻る", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      const closed = mocked.windowSetSize.mock.calls[0]?.[0] as number;
+      await instance.getState().setMascotChat(true);
+      vi.clearAllMocks();
+
+      await instance.getState().setMascotChat(false);
+
+      expect(mocked.windowSetSize).toHaveBeenCalledWith(closed, expect.any(Number));
+    });
+
+    it("マスコット表示でなければ吹き出しは開かない", async () => {
+      const instance = shown();
+      await instance.getState().setMascotChat(true);
+      expect(instance.getState().mascotChat).toBe(false);
+      expect(mocked.windowSetSize).not.toHaveBeenCalled();
+    });
+
+    it("通常表示へ戻ると吹き出しも閉じる", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      await instance.getState().setMascotChat(true);
+
+      await instance.getState().setMascot(false);
+
+      expect(instance.getState().mascotChat).toBe(false);
     });
 
     it("表示していなければ窓は触らない", async () => {

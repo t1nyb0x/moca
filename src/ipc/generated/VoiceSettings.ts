@@ -17,4 +17,11 @@ speaker: string,
 /**
  * 正規化感情ごとの声の作り方。
  */
-emotionPresets: { [key in string]: VoicePreset }, };
+emotionPresets: { [key in string]: VoicePreset }, 
+/**
+ * 感情の効き具合 (要件 F-12-3)。0.0 で中立のまま、1.0 で割り当てどおり。
+ *
+ * タグの強さに素直に従うと、文ごとに声色が振れて落ち着かない。ここで
+ * 全体を抑えられるようにする。
+ */
+emotionStrength: number, };

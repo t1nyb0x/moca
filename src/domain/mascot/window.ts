@@ -41,6 +41,15 @@ export function clampAspect(value: number | null | undefined): number {
   return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, value));
 }
 
+/**
+ * 吹き出しを出すときに横へ足す幅 (要件 F-13-8)。
+ *
+ * 窓はモデルの外接箱まで詰めてある (F-13-4)。そのままでは文字が数えるほどしか
+ * 入らないため、話すあいだだけ広げる。伸ばすのは右側だけで、モデルの器は幅を
+ * 保つ。左右に伸ばすとモデルが画面上で動いて見える。
+ */
+export const CHAT_EXTRA_WIDTH = 260;
+
 /** 画面の高さが取れない環境で使う値。 */
 const FALLBACK_SCREEN_HEIGHT = 800;
 
@@ -73,11 +82,22 @@ export function mascotWindowSize(
   scale: number,
   screenHeight: number,
   aspect?: number | null,
+  extraWidth = 0,
 ): { readonly width: number; readonly height: number } {
   const base =
     Number.isFinite(screenHeight) && screenHeight > 0
       ? screenHeight
       : FALLBACK_SCREEN_HEIGHT;
   const height = Math.round(base * clampScale(scale));
-  return { width: Math.round(height * clampAspect(aspect)), height };
+  const extra = Number.isFinite(extraWidth) && extraWidth > 0 ? extraWidth : 0;
+  return { width: Math.round(height * clampAspect(aspect)) + extra, height };
+}
+
+/** モデルの器の幅。吹き出しを出しても、ここは変えない。 */
+export function mascotModelWidth(
+  scale: number,
+  screenHeight: number,
+  aspect?: number | null,
+): number {
+  return mascotWindowSize(scale, screenHeight, aspect).width;
 }

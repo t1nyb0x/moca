@@ -4,6 +4,7 @@ pub mod logging;
 pub mod prompt;
 pub mod secret;
 pub mod storage;
+pub mod tray;
 pub mod tts;
 
 use std::sync::Arc;
@@ -42,6 +43,9 @@ pub fn run() {
                 logs = %log_dir.display(),
                 "起動しました"
             );
+
+            // 常駐先。マスコット表示で窓を見失っても呼び戻せるようにする
+            tray::setup(app.handle())?;
 
             app.manage(AppState::new(
                 store,
