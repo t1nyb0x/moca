@@ -16,7 +16,8 @@ import type { EmotionMapping } from "@/ipc/generated/EmotionMapping";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
-import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import { CANONICAL_EMOTIONS, NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import { resolveDefaultPresets } from "@/domain/voice/emotion-preset";
 import {
   canEnterMascot,
   CHAT_EXTRA_WIDTH,
@@ -256,6 +257,46 @@ function requireCharacter(
     },
   });
   return false;
+}
+
+/**
+ * 感情ごとの声の割り当てを用意する (要件 F-12-3)。
+ *
+ * 割り当てが空のとき、合成器へ感情成分を一切送らない。CeVIO の `Talker` は
+ * 設定した値を保持し続けるため、前に入っていた値でずっと読み上げられる。
+ * 感情タグは出ているのに声が変わらない、という形で現れる。
+ *
+ * 設定画面を開かないと作られないのでは気づけないので、起動時に埋めておく。
+ * 合成器が動いていなければ何もしない。声が出ないだけで会話は成り立つ。
+ */
+async function ensureVoicePresets(
+  character: CharacterProfile | undefined,
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+): Promise<void> {
+  const voice = character?.voiceSettings;
+  if (character === undefined || voice == null) return;
+  if (!voice.enabled || voice.speaker === "") return;
+  if (Object.keys(voice.emotionPresets).length > 0) return;
+
+  try {
+    const axes = await ipc.ttsEmotionAxes(voice.kind, voice.baseUrl, voice.speaker);
+    const defaults = resolveDefaultPresets(axes);
+    const emotionPresets = Object.fromEntries(
+      CANONICAL_EMOTIONS.map((emotion) => [emotion, defaults[emotion]]),
+    );
+    const saved = await ipc.characterUpsert({
+      ...character,
+      voiceSettings: { ...voice, emotionPresets },
+    });
+    set({
+      characters: get().characters.map((item) =>
+        item.id === saved.id ? saved : item,
+      ),
+    });
+  } catch {
+    // 合成器が動いていないだけ。起動を妨げない。
+  }
 }
 
 function userMessage(content: string): Message {
@@ -573,6 +614,8 @@ export function createAppStore(): UseBoundStore<
         // 復元はモデルを出せたときだけ (要件 F-13-9)。ここを守らないと、
         // 読み込みに失敗した起動が操作できないアプリになる。
         if (settings.mascot) await get().setMascot(true);
+
+        await ensureVoicePresets(active, get, set);
       } catch (error) {
         set({ error: error as CommandError });
       }
