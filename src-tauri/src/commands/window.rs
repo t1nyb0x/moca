@@ -70,7 +70,10 @@ pub fn window_set_size(window: Window, width: f64, height: f64) -> Result<()> {
 #[tauri::command]
 pub fn window_size(window: Window) -> Result<WindowSize> {
     let scale = window.scale_factor().map_err(failed)?;
-    let size = window.inner_size().map_err(failed)?.to_logical::<f64>(scale);
+    let size = window
+        .inner_size()
+        .map_err(failed)?
+        .to_logical::<f64>(scale);
     Ok(WindowSize {
         width: size.width,
         height: size.height,
