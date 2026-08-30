@@ -68,10 +68,12 @@ export function evaluateIdleMotion(
   const lean = Math.sin(t * 0.41); // 首の傾げ
 
   return {
-    // 重心を左右へ。腰から動かすと全身が付いてくる
-    hips: { z: weight * sway, y: twist * sway * 0.6 },
-    // 上半身は腰と逆へ返す。同じ向きだと体が折れて見える
-    spine: { z: -weight * sway * 0.5 },
+    // **腰は回さない。** 腰は骨格の根なので、回すと脚ごと振れて、吊り下げ
+    // られた人形のように見える。足は床に着いているのだから、揺れるのは
+    // 腰から上だけである。
+    spine: { z: weight * sway, y: twist * sway * 0.5 },
+    // 胸は背骨と逆へ返す。同じ向きだと体が一枚板に見える
+    chest: { z: -weight * sway * 0.35 },
     head: { z: lean * tilt, x: nod * tilt * 0.35 },
   };
 }
