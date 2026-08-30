@@ -77,6 +77,8 @@ pub fn run() {
             commands::window::window_set_mascot,
             commands::window::window_set_size,
             commands::window::window_size,
+            commands::window::window_cursor_position,
+            commands::window::window_set_click_through,
             commands::window::window_start_drag,
         ])
         .run(tauri::generate_context!())

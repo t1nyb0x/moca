@@ -19,12 +19,27 @@ export const MAX_SCALE = 1;
 export const DEFAULT_SCALE = 0.5;
 
 /**
- * 窓の縦横比 (横 / 縦)。
+ * 窓の縦横比 (横 / 縦) の既定値。
  *
- * 立ち姿を収める目安。#13 でモデルの外接矩形から求めるようになるまでの
- * 暫定値 (要件 F-13-4)。
+ * 通常はモデルの外接箱から求める (要件 F-13-4)。まだモデルを測れていない
+ * ときの目安として使う。
  */
-export const MASCOT_ASPECT = 0.6;
+export const DEFAULT_ASPECT = 0.6;
+
+/**
+ * 縦横比の下限と上限。
+ *
+ * モデルの外接箱から求めるため、読み込みの具合によっては極端な値になりうる。
+ * 細すぎても平たすぎても掴めない窓になるので、範囲へ収める。
+ */
+export const MIN_ASPECT = 0.15;
+export const MAX_ASPECT = 3;
+
+/** 縦横比を扱える範囲へ収める。読めない値は既定へ倒す。 */
+export function clampAspect(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return DEFAULT_ASPECT;
+  return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, value));
+}
 
 /** 画面の高さが取れない環境で使う値。 */
 const FALLBACK_SCREEN_HEIGHT = 800;
@@ -57,11 +72,12 @@ export function canEnterMascot(input: {
 export function mascotWindowSize(
   scale: number,
   screenHeight: number,
+  aspect?: number | null,
 ): { readonly width: number; readonly height: number } {
   const base =
     Number.isFinite(screenHeight) && screenHeight > 0
       ? screenHeight
       : FALLBACK_SCREEN_HEIGHT;
   const height = Math.round(base * clampScale(scale));
-  return { width: Math.round(height * MASCOT_ASPECT), height };
+  return { width: Math.round(height * clampAspect(aspect)), height };
 }

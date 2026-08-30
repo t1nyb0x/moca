@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAppStore } from "@/app/store";
 import { isSoftwareRenderer } from "@/domain/model/renderer";
-import { toAssetUrl } from "@/ipc";
+import { toAssetUrl, windowCursorPosition, windowSetClickThrough } from "@/ipc";
 import { Viewer } from "@/render/Viewer";
 import { ViewerToolbar } from "./ViewerToolbar";
 
@@ -13,6 +13,17 @@ import { ViewerToolbar } from "./ViewerToolbar";
  * 続けて動かす間は書かず、落ち着いてから一度だけ書く。
  */
 const CAMERA_SAVE_DELAY_MS = 800;
+
+/**
+ * 当たり判定を取り直す間隔。
+ *
+ * クリックスルー中は WebView へマウスが届かないため、位置は取りに行くしかない。
+ * 短いほど掴める感触が良くなるが、そのぶん往復が増える。
+ */
+const HIT_TEST_INTERVAL_MS = 80;
+
+/** これより薄いところは「描かれていない」とみなす。 */
+const SOLID_ALPHA = 0.1;
 
 /**
  * 3D ビューの器。
@@ -67,6 +78,77 @@ export function ViewerHost(): React.JSX.Element {
       }
     };
 
+    /**
+     * その点が掴めるか (要件 F-13-5)。
+     *
+     * ボタンなどの部品はキャンバスの外にあるので、先に見る。ここを飛ばすと
+     * 「戻る」が押せなくなり、マスコット表示から出られなくなる。
+     */
+    const isSolidAt = (x: number, y: number): boolean => {
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        return false;
+      }
+
+      const element = document.elementFromPoint(x, y);
+      if (element === null) return false;
+      if (element.closest("button, input, select, textarea, a") !== null) {
+        return true;
+      }
+
+      const canvas = container.querySelector("canvas");
+      if (canvas === null || element !== canvas) return false;
+
+      // 測定は次の描画で行われるので、判定に使うのは前回の値。80ms 前の、
+      // ほぼ同じ点の結果なので実用上は差し支えない。
+      const alpha = viewer.probedAlpha();
+      const rect = canvas.getBoundingClientRect();
+      viewer.probeAlpha(x - rect.left, y - rect.top);
+      return alpha !== null && alpha > SOLID_ALPHA;
+    };
+
+    let clickThrough = false;
+    let hitTimer: ReturnType<typeof setInterval> | null = null;
+
+    const applyHitTest = async (): Promise<void> => {
+      let point;
+      try {
+        point = await windowCursorPosition();
+      } catch {
+        // 取れない一回は見送る。次の巡回で取り直せばよい。
+        return;
+      }
+      const next = !isSolidAt(point.x, point.y);
+      if (next === clickThrough) return;
+      clickThrough = next;
+      try {
+        await windowSetClickThrough(next);
+      } catch {
+        // 切り替えられなければ、次の巡回でまた試す
+        clickThrough = !next;
+      }
+    };
+
+    const stopHitTest = (): void => {
+      if (hitTimer !== null) {
+        clearInterval(hitTimer);
+        hitTimer = null;
+      }
+      // 通常表示へ素通しを持ち込まない。残すと窓が一切触れなくなる。
+      if (clickThrough) {
+        clickThrough = false;
+        void windowSetClickThrough(false);
+      }
+    };
+
+    const startHitTest = (): void => {
+      if (hitTimer !== null) return;
+      hitTimer = setInterval(() => void applyHitTest(), HIT_TEST_INTERVAL_MS);
+    };
+
+    // 起動時にマスコット表示だと、下の購読は変化を取り逃がす。bootstrap が
+    // mascot を立てるのは、この効果が走るより前だからである。
+    if (useAppStore.getState().mascot) startHitTest();
+
     // カメラ位置を自動で覚える (要件 F-03-5)。手を離してから少し置くのは、
     // 回している最中の中間位置を書き込まないため。
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -119,6 +201,10 @@ export function ViewerHost(): React.JSX.Element {
           } else {
             applyNormalCamera();
           }
+
+          // 窓をモデルに合わせるための縦横比 (要件 F-13-4)。構図を決めた後に
+          // 測る。外接箱は構図に依らないが、順序を固定しておくほうが読みやすい。
+          useAppStore.getState().setModelAspect(viewer.mascotAspect());
 
           // 保存された割り当てがあれば反映する (PMX のみ)
           if (character?.emotionMapping != null) {
@@ -199,6 +285,8 @@ export function ViewerHost(): React.JSX.Element {
           if (mascot) viewer.setFraming("full");
           viewer.setRefitOnResize(mascot);
           viewer.setInteractive(!mascot);
+          if (mascot) startHitTest();
+          else stopHitTest();
           // 戻るときは全身のままにしない。マスコット表示の構図はあちらの
           // 都合であって、利用者が通常表示のために覚えた位置ではない。
           if (!mascot) applyNormalCamera();
@@ -225,6 +313,7 @@ export function ViewerHost(): React.JSX.Element {
 
     return () => {
       for (const off of unsubscribe) off();
+      stopHitTest();
       if (saveTimer !== null) clearTimeout(saveTimer);
       viewer.onCameraSettled = null;
       viewer.dispose();

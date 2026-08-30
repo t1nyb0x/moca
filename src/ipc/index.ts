@@ -19,6 +19,7 @@ import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
 import type { Settings } from "./generated/Settings";
 import type { SpeakerInfo } from "./generated/SpeakerInfo";
 import type { TtsKind } from "./generated/TtsKind";
+import type { CursorPoint } from "./generated/CursorPoint";
 import type { WindowSize } from "./generated/WindowSize";
 import { toCommandError } from "./errors";
 
@@ -160,6 +161,18 @@ export const windowSetSize = (width: number, height: number): Promise<void> =>
 
 /** マスコット表示へ入る前の大きさを覚えるために読む。 */
 export const windowSize = (): Promise<WindowSize> => call("window_size");
+
+/**
+ * 窓に対するカーソルの位置 (要件 F-13-5)。
+ *
+ * クリックスルー中は WebView へマウスが届かないため、位置はこちらから読む。
+ */
+export const windowCursorPosition = (): Promise<CursorPoint> =>
+  call("window_cursor_position");
+
+/** 描かれていないところでは背後の窓を操作できるようにする (要件 F-13-5)。 */
+export const windowSetClickThrough = (ignore: boolean): Promise<void> =>
+  call("window_set_click_through", { ignore });
 
 /** 掴んで窓ごと動かす (要件 F-13-6)。 */
 export const windowStartDrag = (): Promise<void> => call("window_start_drag");

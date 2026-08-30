@@ -107,6 +107,13 @@ export type AppState = {
    * 保存はしない。次の起動では通常表示の既定に従えばよい。
    */
   normalSize: { readonly width: number; readonly height: number } | null;
+  /**
+   * モデルを収めるのに必要な窓の縦横比 (要件 F-13-4)。
+   *
+   * 描画側が読み込みのたびに測って入れる。保存はしない。モデルごとに違い、
+   * 次に読んだときまた測るため。
+   */
+  modelAspect: number | null;
 
   bootstrap: () => Promise<void>;
   setActiveCharacter: (id: string | null) => Promise<void>;
@@ -154,6 +161,8 @@ export type AppState = {
   setMascot: (enabled: boolean) => Promise<void>;
   /** マスコット表示の倍率 (要件 F-13-3)。範囲へ収めてから保存する。 */
   setMascotScale: (scale: number) => Promise<void>;
+  /** モデルを収めるのに必要な縦横比。描画側が測って入れる (要件 F-13-4)。 */
+  setModelAspect: (aspect: number | null) => void;
 };
 
 /** 画面の高さ。取れない環境では窓の寸法側が既定へ倒す。 */
@@ -306,6 +315,7 @@ export function createAppStore(): UseBoundStore<
     showViewer: true,
     mascot: false,
     normalSize: null,
+    modelAspect: null,
 
     clearError: () => set({ error: null }),
 
@@ -414,6 +424,7 @@ export function createAppStore(): UseBoundStore<
           ? mascotWindowSize(
               state.settings?.mascotScale ?? DEFAULT_SCALE,
               screenHeight(),
+              state.modelAspect,
             )
           : (normalSize ?? { width: 1100, height: 720 });
         await ipc.windowSetSize(size.width, size.height);
@@ -432,12 +443,29 @@ export function createAppStore(): UseBoundStore<
       }
     },
 
+    setModelAspect: (aspect) => {
+      set({ modelAspect: aspect });
+
+      // 起動時はモデルを測る前に窓を組むため、既定の縦横比で出来ている。
+      // 測れたところで合わせ直す (要件 F-13-4)。
+      const state = get();
+      if (!state.mascot) return;
+      const size = mascotWindowSize(
+        state.settings?.mascotScale ?? DEFAULT_SCALE,
+        screenHeight(),
+        aspect,
+      );
+      void ipc.windowSetSize(size.width, size.height).catch((error: unknown) => {
+        set({ error: error as CommandError });
+      });
+    },
+
     setMascotScale: async (scale) => {
       const state = get();
       const clamped = clampScale(scale);
 
       if (state.mascot) {
-        const size = mascotWindowSize(clamped, screenHeight());
+        const size = mascotWindowSize(clamped, screenHeight(), state.modelAspect);
         try {
           await ipc.windowSetSize(size.width, size.height);
         } catch (error) {
