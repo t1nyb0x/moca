@@ -4,8 +4,28 @@ import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
+import type { PoseMap } from "@/domain/motion/pose";
 import type { WeightMap } from "@/domain/motion/types";
 import type { ModelAdapter } from "./ModelAdapter";
+
+/**
+ * 姿勢で動かしうるボーン (要件 F-14)。
+ *
+ * 前腕と手は入れない。関節を順に回すだけでは円弧を描く機械的な動きになり、
+ * 手が胴へ入る。VRM の当たり判定は揺れ物のためのもので、メッシュ同士は
+ * 止まらない。
+ */
+const POSED_BONES = [
+  "hips",
+  "spine",
+  "chest",
+  "neck",
+  "head",
+  "leftShoulder",
+  "rightShoulder",
+  "leftUpperArm",
+  "rightUpperArm",
+] as const;
 
 /**
  * 直接の表情を持たない感情の代替。
@@ -127,10 +147,13 @@ export class VrmAdapter implements ModelAdapter {
 
   readonly #vrm: VRM;
   readonly #available: Set<string>;
-  readonly #chest: THREE.Object3D | null;
-  readonly #spine: THREE.Object3D | null;
-  readonly #chestRestX: number;
-  readonly #spineRestX: number;
+  /** 姿勢で動かすボーンと、その基準の回転。 */
+  readonly #posed = new Map<
+    string,
+    { node: THREE.Object3D; rest: { x: number; y: number; z: number } }
+  >();
+  /** 前のフレームで動かしたボーン。戻し忘れを防ぐ。 */
+  #posedLast: readonly string[] = [];
   /** 直接の表情が無い感情を、使える表情で近似するための対応表。 */
   readonly #substitutes: ReadonlyMap<
     CanonicalEmotion,
@@ -146,12 +169,18 @@ export class VrmAdapter implements ModelAdapter {
       ) ?? [],
     );
 
-    this.#chest =
-      vrm.humanoid.getNormalizedBoneNode("chest") ??
-      vrm.humanoid.getNormalizedBoneNode("upperChest");
-    this.#spine = vrm.humanoid.getNormalizedBoneNode("spine");
-    this.#chestRestX = this.#chest?.rotation.x ?? 0;
-    this.#spineRestX = this.#spine?.rotation.x ?? 0;
+    // 姿勢で使いうるボーンを先に引いておく。基準の回転もここで覚える。
+    // 立ち姿の調整 (腕を下ろす) の後に取るので、そこが閉じ切った端になる。
+    for (const name of POSED_BONES) {
+      const node =
+        vrm.humanoid.getNormalizedBoneNode(name) ??
+        (name === "chest" ? vrm.humanoid.getNormalizedBoneNode("upperChest") : null);
+      if (node === null) continue;
+      this.#posed.set(name, {
+        node,
+        rest: { x: node.rotation.x, y: node.rotation.y, z: node.rotation.z },
+      });
+    }
 
     const substitutes = new Map<
       CanonicalEmotion,
@@ -214,13 +243,28 @@ export class VrmAdapter implements ModelAdapter {
     }
   }
 
-  applyBreath(chestPitchRadians: number, spinePitchRadians: number): void {
-    if (this.#chest !== null) {
-      this.#chest.rotation.x = this.#chestRestX + chestPitchRadians;
+  applyPose(pose: PoseMap): void {
+    // 今回動かさないボーンを基準へ戻す。戻さないと前の姿勢が残り続ける。
+    for (const name of this.#posedLast) {
+      if (name in pose) continue;
+      const entry = this.#posed.get(name);
+      if (entry === undefined) continue;
+      entry.node.rotation.set(entry.rest.x, entry.rest.y, entry.rest.z);
     }
-    if (this.#spine !== null) {
-      this.#spine.rotation.x = this.#spineRestX + spinePitchRadians;
+
+    const applied: string[] = [];
+    for (const [name, rotation] of Object.entries(pose)) {
+      const entry = this.#posed.get(name);
+      // 当たらないボーン名は読み飛ばす (要件 F-14-6)
+      if (entry === undefined) continue;
+      entry.node.rotation.set(
+        entry.rest.x + (rotation.x ?? 0),
+        entry.rest.y + (rotation.y ?? 0),
+        entry.rest.z + (rotation.z ?? 0),
+      );
+      applied.push(name);
     }
+    this.#posedLast = applied;
   }
 
   update(deltaSeconds: number): void {

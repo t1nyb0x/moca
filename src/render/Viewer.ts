@@ -17,6 +17,20 @@ import {
   type BreathState,
 } from "@/domain/motion/breath";
 import {
+  advanceIdleMotion,
+  createIdleMotionState,
+  evaluateIdleMotion,
+  type IdleMotionState,
+} from "@/domain/motion/idle-motion";
+import {
+  advanceEmotionMotion,
+  createEmotionMotionState,
+  evaluateEmotionMotion,
+  setEmotionMotion,
+  type EmotionMotionState,
+} from "@/domain/motion/emotion-motion";
+import { composePose, type PoseMap } from "@/domain/motion/pose";
+import {
   advanceExpression,
   createExpressionState,
   evaluateExpression,
@@ -70,6 +84,7 @@ const DEFAULT_IDLE: IdleSettings = {
   lookAt: true,
   breath: true,
   springBone: true,
+  motion: true,
 };
 
 /**
@@ -107,6 +122,8 @@ export class Viewer {
   #blink: BlinkState;
   #saccade: SaccadeState;
   #breath: BreathState;
+  #idleMotion: IdleMotionState;
+  #emotionMotion: EmotionMotionState;
   /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
   #framing: FramingPreset | null = null;
   /** 当たり判定で測りたい点。次の描画で読む (要件 F-13-5)。 */
@@ -184,6 +201,8 @@ export class Viewer {
     this.#blink = createBlinkState(seed);
     this.#saccade = createSaccadeState(seed + 1);
     this.#breath = createBreathState();
+    this.#idleMotion = createIdleMotionState();
+    this.#emotionMotion = createEmotionMotionState();
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
     this.#resizeObserver.observe(container);
@@ -284,6 +303,8 @@ export class Viewer {
   setEmotion(emotion: CanonicalEmotion, intensity = 1): void {
     this.#emotionMarkers = [];
     this.#expression = setExpressionTarget(this.#expression, emotion, intensity);
+    // 体も一緒に動かす。表情だけだと顔しか変わらず、人形のままに見える
+    this.#emotionMotion = setEmotionMotion(this.#emotionMotion, emotion, intensity);
   }
 
   /**
@@ -315,6 +336,11 @@ export class Viewer {
     if (emotion !== null) {
       this.#expression = setExpressionTarget(
         this.#expression,
+        emotion.emotion,
+        emotion.intensity,
+      );
+      this.#emotionMotion = setEmotionMotion(
+        this.#emotionMotion,
         emotion.emotion,
         emotion.intensity,
       );
@@ -479,6 +505,11 @@ export class Viewer {
         marker.cue.emotion,
         marker.cue.intensity,
       );
+      this.#emotionMotion = setEmotionMotion(
+        this.#emotionMotion,
+        marker.cue.emotion,
+        marker.cue.intensity,
+      );
     }
   }
 
@@ -528,6 +559,17 @@ export class Viewer {
     }
     if (this.#idle.blink) this.#blink = advanceBlink(this.#blink, delta);
     if (this.#idle.breath) this.#breath = advanceBreath(this.#breath, delta);
+
+    // 感情の姿勢は待機の速さも決めるので、先に進める (要件 F-14-2)
+    this.#emotionMotion = advanceEmotionMotion(this.#emotionMotion, delta);
+    const emotionMotion = evaluateEmotionMotion(this.#emotionMotion);
+    if (this.#idle.motion) {
+      this.#idleMotion = advanceIdleMotion(
+        this.#idleMotion,
+        delta,
+        emotionMotion.tempo,
+      );
+    }
     if (this.#idle.saccade) {
       this.#saccade = advanceSaccade(this.#saccade, delta);
       // 視線用の表情はモデル側の LookAt が毎フレーム上書きするため、
@@ -550,9 +592,7 @@ export class Viewer {
               : evaluateAudioLipSync(this.#audioLipSync),
           idle: this.#idle.blink ? [evaluateBlink(this.#blink)] : [],
         },
-        this.#idle.breath
-          ? evaluateBreath(this.#breath)
-          : { chestPitchRadians: 0, spinePitchRadians: 0 },
+        this.#pose(emotionMotion),
       );
       adapter.update(delta);
     }
@@ -560,6 +600,31 @@ export class Viewer {
     this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
     this.#readAlphaProbe();
+  }
+
+  /**
+   * 呼吸・待機・感情の姿勢を 1 枚に重ねる (要件 F-14)。
+   *
+   * 合計の上限は `composePose` が持つ。層がたまたま同じ向きへ振れたときに
+   * 折れた姿勢にしないため。
+   */
+  #pose(emotionMotion: ReturnType<typeof evaluateEmotionMotion>): PoseMap {
+    const layers: PoseMap[] = [];
+
+    if (this.#idle.breath) {
+      const breath = evaluateBreath(this.#breath);
+      layers.push({
+        chest: { x: breath.chestPitchRadians },
+        spine: { x: breath.spinePitchRadians },
+      });
+    }
+
+    if (this.#idle.motion) {
+      layers.push(evaluateIdleMotion(this.#idleMotion, emotionMotion.amplitude));
+      layers.push(emotionMotion.pose);
+    }
+
+    return composePose(layers);
   }
 
   /** 描画の直後に呼ぶ。ここを外すと読み出せる保証が無くなる。 */

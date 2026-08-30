@@ -76,6 +76,7 @@ const character: CharacterProfile = {
     lookAt: true,
     breath: true,
     springBone: true,
+    motion: true,
   },
   emotionMapping: null,
   voiceSettings: null,

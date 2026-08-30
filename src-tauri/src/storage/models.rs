@@ -127,6 +127,16 @@ pub struct IdleSettings {
     pub look_at: bool,
     pub breath: bool,
     pub spring_bone: bool,
+    /// 感情に応じた姿勢と待機中の動き (要件 F-14-5)。
+    ///
+    /// 後から足した項目なので default が要る。無いと既存のプロファイルが
+    /// 読めなくなる。
+    #[serde(default = "default_true")]
+    pub motion: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for IdleSettings {
@@ -137,6 +147,7 @@ impl Default for IdleSettings {
             look_at: true,
             breath: true,
             spring_bone: true,
+            motion: true,
         }
     }
 }

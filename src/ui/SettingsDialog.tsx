@@ -68,6 +68,7 @@ function emptyCharacter(providerId: string): CharacterProfile {
       lookAt: true,
       breath: true,
       springBone: true,
+      motion: true,
     },
     emotionMapping: null,
     voiceSettings: null,
