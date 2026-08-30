@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "moca",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "identifier": "io.github.t1nyb0x.moca",
   "build": {
     "frontendDist": "../dist",
