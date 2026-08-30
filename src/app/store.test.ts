@@ -5,7 +5,7 @@ import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { ChatResult } from "@/ipc/generated/ChatResult";
-import { DEFAULT_ASPECT, MIN_SCALE } from "@/domain/mascot/window";
+import { CHAT_EXTRA_WIDTH, DEFAULT_ASPECT, MIN_SCALE } from "@/domain/mascot/window";
 
 vi.mock("@/ipc", () => ({
   settingsGet: vi.fn(),
@@ -708,6 +708,51 @@ describe("診断", () => {
       const instance = shown();
       instance.getState().setModelAspect(0.35);
       expect(mocked.windowSetSize).not.toHaveBeenCalled();
+    });
+
+    it("吹き出しを開くと窓が広がる", async () => {
+      // 窓はモデルの幅ぴったりなので、話すには広げるしかない (要件 F-13-8)
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      const closed = mocked.windowSetSize.mock.calls[0]?.[0] as number;
+      vi.clearAllMocks();
+
+      await instance.getState().setMascotChat(true);
+
+      expect(instance.getState().mascotChat).toBe(true);
+      expect(mocked.windowSetSize).toHaveBeenCalledWith(
+        closed + CHAT_EXTRA_WIDTH,
+        expect.any(Number),
+      );
+    });
+
+    it("吹き出しを閉じると窓も戻る", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      const closed = mocked.windowSetSize.mock.calls[0]?.[0] as number;
+      await instance.getState().setMascotChat(true);
+      vi.clearAllMocks();
+
+      await instance.getState().setMascotChat(false);
+
+      expect(mocked.windowSetSize).toHaveBeenCalledWith(closed, expect.any(Number));
+    });
+
+    it("マスコット表示でなければ吹き出しは開かない", async () => {
+      const instance = shown();
+      await instance.getState().setMascotChat(true);
+      expect(instance.getState().mascotChat).toBe(false);
+      expect(mocked.windowSetSize).not.toHaveBeenCalled();
+    });
+
+    it("通常表示へ戻ると吹き出しも閉じる", async () => {
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      await instance.getState().setMascotChat(true);
+
+      await instance.getState().setMascot(false);
+
+      expect(instance.getState().mascotChat).toBe(false);
     });
 
     it("表示していなければ窓は触らない", async () => {

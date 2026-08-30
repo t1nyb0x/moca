@@ -886,3 +886,66 @@ body.mascot .viewer {
 .vtool__scale input {
   width: 6rem;
 }
+
+/* --- マスコット表示の吹き出し (要件 F-13-8) --- */
+
+/*
+  吹き出しを出すあいだは窓を右へ広げる。モデルの器は幅を保つので、モデルは
+  画面上で動かない。ここが伸びると、話しかけるたびにモデルがずれて見える。
+*/
+body.mascot--chat .viewer {
+  flex: 0 0 var(--mascot-model-width, 12rem);
+}
+
+.mchat {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  z-index: 5;
+}
+
+.mchat__bubble {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--assistant-bubble);
+  color: var(--text);
+  font-size: 0.9em;
+}
+
+.mchat__placeholder {
+  color: var(--text-muted);
+}
+
+.mchat__form {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.mchat__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+}
+
+.mchat__close {
+  align-self: flex-end;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+.mchat__close:hover {
+  opacity: 1;
+}

@@ -19,6 +19,7 @@ import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
 import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
 import {
   canEnterMascot,
+  CHAT_EXTRA_WIDTH,
   clampScale,
   DEFAULT_SCALE,
   mascotWindowSize,
@@ -114,6 +115,13 @@ export type AppState = {
    * 次に読んだときまた測るため。
    */
   modelAspect: number | null;
+  /**
+   * マスコット表示で吹き出しを開いているか (要件 F-13-8)。
+   *
+   * 窓はモデルの幅ぴったりなので、開くあいだだけ横へ広げる。保存はしない。
+   * 次の起動は閉じた姿から始める。
+   */
+  mascotChat: boolean;
 
   bootstrap: () => Promise<void>;
   setActiveCharacter: (id: string | null) => Promise<void>;
@@ -163,11 +171,27 @@ export type AppState = {
   setMascotScale: (scale: number) => Promise<void>;
   /** モデルを収めるのに必要な縦横比。描画側が測って入れる (要件 F-13-4)。 */
   setModelAspect: (aspect: number | null) => void;
+  /** 吹き出しの開閉 (要件 F-13-8)。窓の幅も合わせる。 */
+  setMascotChat: (open: boolean) => Promise<void>;
 };
 
 /** 画面の高さ。取れない環境では窓の寸法側が既定へ倒す。 */
 function screenHeight(): number {
   return typeof window === "undefined" ? 0 : window.screen.height;
+}
+
+/** マスコット表示の窓の大きさ。吹き出しが出ていれば横へ足す。 */
+function mascotSizeOf(
+  settings: Settings | null,
+  aspect: number | null,
+  chatOpen: boolean,
+): { readonly width: number; readonly height: number } {
+  return mascotWindowSize(
+    settings?.mascotScale ?? DEFAULT_SCALE,
+    screenHeight(),
+    aspect,
+    chatOpen ? CHAT_EXTRA_WIDTH : 0,
+  );
 }
 
 function nowIso(): string {
@@ -316,6 +340,7 @@ export function createAppStore(): UseBoundStore<
     mascot: false,
     normalSize: null,
     modelAspect: null,
+    mascotChat: false,
 
     clearError: () => set({ error: null }),
 
@@ -416,16 +441,13 @@ export function createAppStore(): UseBoundStore<
       try {
         // 入る前の大きさを覚えておき、戻るときに復元する
         const normalSize = enabled ? await ipc.windowSize() : state.normalSize;
-        set({ mascot: enabled, normalSize });
+        // 通常表示へ戻るときは吹き出しも畳む。開いたままにしても出す場所がない。
+        set({ mascot: enabled, normalSize, mascotChat: false });
 
         await ipc.windowSetMascot(enabled);
 
         const size = enabled
-          ? mascotWindowSize(
-              state.settings?.mascotScale ?? DEFAULT_SCALE,
-              screenHeight(),
-              state.modelAspect,
-            )
+          ? mascotSizeOf(state.settings, state.modelAspect, false)
           : (normalSize ?? { width: 1100, height: 720 });
         await ipc.windowSetSize(size.width, size.height);
       } catch (error) {
@@ -450,14 +472,24 @@ export function createAppStore(): UseBoundStore<
       // 測れたところで合わせ直す (要件 F-13-4)。
       const state = get();
       if (!state.mascot) return;
-      const size = mascotWindowSize(
-        state.settings?.mascotScale ?? DEFAULT_SCALE,
-        screenHeight(),
-        aspect,
-      );
+      const size = mascotSizeOf(state.settings, aspect, state.mascotChat);
       void ipc.windowSetSize(size.width, size.height).catch((error: unknown) => {
         set({ error: error as CommandError });
       });
+    },
+
+    setMascotChat: async (open) => {
+      const state = get();
+      // 通常表示には出す場所がない。話すなら本来のチャット画面がある。
+      if (!state.mascot || state.mascotChat === open) return;
+
+      set({ mascotChat: open });
+      const size = mascotSizeOf(state.settings, state.modelAspect, open);
+      try {
+        await ipc.windowSetSize(size.width, size.height);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
     },
 
     setMascotScale: async (scale) => {
@@ -465,7 +497,12 @@ export function createAppStore(): UseBoundStore<
       const clamped = clampScale(scale);
 
       if (state.mascot) {
-        const size = mascotWindowSize(clamped, screenHeight(), state.modelAspect);
+        const size = mascotWindowSize(
+          clamped,
+          screenHeight(),
+          state.modelAspect,
+          state.mascotChat ? CHAT_EXTRA_WIDTH : 0,
+        );
         try {
           await ipc.windowSetSize(size.width, size.height);
         } catch (error) {

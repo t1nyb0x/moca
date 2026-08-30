@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAppStore } from "@/app/store";
-import { canEnterMascot } from "@/domain/mascot/window";
-import { windowStartDrag } from "@/ipc";
+import { canEnterMascot, mascotModelWidth } from "@/domain/mascot/window";
+import { onMascotToggle, windowStartDrag } from "@/ipc";
 import { ChatPanel } from "./ChatPanel";
 import { SettingsDialog } from "./SettingsDialog";
 import { ViewerHost } from "./ViewerHost";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { MascotChat } from "./MascotChat";
 import { ConversationList } from "./ConversationList";
 import { useModelDrop } from "./useModelDrop";
 
@@ -16,6 +17,9 @@ import { useModelDrop } from "./useModelDrop";
  * 3D ビューは段 7 で `ViewerHost` として足す。React の管理外に置くため、
  * ここには器だけを用意する (ADR-0007)。
  */
+/** これだけ動いたら「掴んだ」とみなす。押しただけの手ぶれを拾わない程度。 */
+const DRAG_THRESHOLD_PX = 4;
+
 export function App(): React.JSX.Element {
   const characters = useAppStore((state) => state.characters);
   const providers = useAppStore((state) => state.providers);
@@ -26,6 +30,9 @@ export function App(): React.JSX.Element {
   const setMascot = useAppStore((state) => state.setMascot);
   const mascotScale = useAppStore((state) => state.settings?.mascotScale ?? 0.5);
   const setMascotScale = useAppStore((state) => state.setMascotScale);
+  const mascotChat = useAppStore((state) => state.mascotChat);
+  const setMascotChat = useAppStore((state) => state.setMascotChat);
+  const modelAspect = useAppStore((state) => state.modelAspect);
   const newConversation = useAppStore((state) => state.newConversation);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const status = useAppStore((state) => state.status);
@@ -51,16 +58,52 @@ export function App(): React.JSX.Element {
     return () => document.body.classList.remove("mascot");
   }, [mascot]);
 
+  useEffect(() => {
+    document.body.classList.toggle("mascot--chat", mascot && mascotChat);
+    return () => document.body.classList.remove("mascot--chat");
+  }, [mascot, mascotChat]);
+
+  // 吹き出しを開いても、モデルの器は幅を保つ。広げた分は吹き出しが取る。
+  // ここが伸びるとモデルが画面上で動いて見える。
+  useEffect(() => {
+    if (!mascot) return;
+    const width = mascotModelWidth(mascotScale, window.screen.height, modelAspect);
+    document.documentElement.style.setProperty("--mascot-model-width", `${width}px`);
+  }, [mascot, mascotScale, modelAspect]);
+
   /**
-   * 掴んで窓ごと動かす (要件 F-13-6)。
+   * 掴んで窓ごと動かす (要件 F-13-6) と、押して話しかける (F-13-8) の区別。
    *
-   * 枠を消すと掴む場所が無くなるため、モデルの上をそのまま取っ手にする。
-   * ボタンの上では拾わない。押せなくなるため。
+   * どちらもモデルの上で始まるので、動かし始めるまで待つ。`start_dragging` を
+   * 押した時点で呼ぶと OS が操作を持っていき、押しただけなのか動かしたのかを
+   * 見分けられなくなる。
    */
-  const startDrag = (event: React.MouseEvent): void => {
+  const dragFrom = useRef<{ x: number; y: number } | null>(null);
+
+  const onPointerDown = (event: React.PointerEvent): void => {
     if (!mascot || event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("button, input, select") !== null) return;
+    if (
+      (event.target as HTMLElement).closest("button, input, select, textarea") !== null
+    ) {
+      return;
+    }
+    dragFrom.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const onPointerMove = (event: React.PointerEvent): void => {
+    const from = dragFrom.current;
+    if (from === null) return;
+    const moved = Math.hypot(event.clientX - from.x, event.clientY - from.y);
+    if (moved < DRAG_THRESHOLD_PX) return;
+    // ここから先は窓の移動。OS へ渡すので、押した扱いにはしない。
+    dragFrom.current = null;
     void windowStartDrag();
+  };
+
+  const onPointerUp = (): void => {
+    if (dragFrom.current === null) return;
+    dragFrom.current = null;
+    void setMascotChat(!mascotChat);
   };
 
   /** マスコット表示では道具立てを出せないので、ホイールで大きさを変える。 */
@@ -73,8 +116,32 @@ export function App(): React.JSX.Element {
     void bootstrap();
   }, [bootstrap]);
 
+  // トレイからの切り替え (要件 F-13-7)。入れるかどうかの判断は setMascot が
+  // 持っているので、ここでは切り替えを頼むだけにする。
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    let disposed = false;
+    void onMascotToggle(() => {
+      const state = useAppStore.getState();
+      void state.setMascot(!state.mascot);
+    }).then((off) => {
+      if (disposed) off();
+      else stop = off;
+    });
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, []);
+
   return (
-    <div className="app" onMouseDown={startDrag} onWheel={wheelScale}>
+    <div
+      className="app"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onWheel={wheelScale}
+    >
       <header className="app__header">
         <span className="app__title">moca</span>
 
@@ -237,6 +304,8 @@ export function App(): React.JSX.Element {
           戻る
         </button>
       )}
+
+      {mascot && mascotChat && <MascotChat />}
 
       <main className="app__main">
         {historyOpen && <ConversationList onClose={() => setHistoryOpen(false)} />}

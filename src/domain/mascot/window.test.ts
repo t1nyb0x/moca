@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canEnterMascot,
+  CHAT_EXTRA_WIDTH,
   clampAspect,
   clampScale,
   DEFAULT_ASPECT,
@@ -110,6 +111,20 @@ describe("mascotWindowSize", () => {
   it("範囲外の倍率は収めてから使う", () => {
     expect(mascotWindowSize(99, 1000)).toEqual(mascotWindowSize(MAX_SCALE, 1000));
     expect(mascotWindowSize(0, 1000)).toEqual(mascotWindowSize(MIN_SCALE, 1000));
+  });
+
+  it("吹き出しのぶんを横へ足せる", () => {
+    // 窓はモデルの幅ぴったりなので (F-13-4)、話すには広げるしかない
+    const closed = mascotWindowSize(0.5, 1000, 0.4);
+    const open = mascotWindowSize(0.5, 1000, 0.4, CHAT_EXTRA_WIDTH);
+    expect(open.width).toBe(closed.width + CHAT_EXTRA_WIDTH);
+    expect(open.height).toBe(closed.height);
+  });
+
+  it("足す幅が負なら無視する", () => {
+    expect(mascotWindowSize(0.5, 1000, 0.4, -100)).toEqual(
+      mascotWindowSize(0.5, 1000, 0.4),
+    );
   });
 
   it("画面の高さが取れなくても潰れない", () => {
