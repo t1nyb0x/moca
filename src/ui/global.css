@@ -855,11 +855,17 @@ body.mascot .viewer {
   background: transparent;
 }
 
+/*
+  窓はモデルの外接箱まで詰めてあるので (要件 F-13-4)、少しでも内側へ置くと
+  髪に掛かって見える。角へ寄せ、字も詰めて占める面積を抑える。
+*/
 .mascot__exit {
   position: fixed;
-  top: 0.4rem;
-  right: 0.4rem;
+  top: 0;
+  right: 0;
   z-index: 10;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8em;
   opacity: 0.25;
   transition: opacity 0.15s;
 }
