@@ -20,6 +20,17 @@ pub struct WindowSize {
     pub height: f64,
 }
 
+/// 窓の左上を原点とした、カーソルの位置 (論理画素)。
+///
+/// 窓の外にいることもあるため、負の値や大きさを超える値を取りうる。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CursorPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
 /// 通常表示での最小の大きさ。`tauri.conf.json` の `minWidth` / `minHeight`
 /// と揃える。
 const MIN_NORMAL_WIDTH: f64 = 720.0;
@@ -78,6 +89,27 @@ pub fn window_size(window: Window) -> Result<WindowSize> {
         width: size.width,
         height: size.height,
     })
+}
+
+/// 窓に対するカーソルの位置 (要件 F-13-5)。
+///
+/// **クリックスルー中は WebView へマウスが届かない。** 画面側では「モデルの
+/// 上へ戻ってきた」ことを検知できないため、位置はこちらから読む。
+#[tauri::command]
+pub fn window_cursor_position(window: Window) -> Result<CursorPoint> {
+    let scale = window.scale_factor().map_err(failed)?;
+    let cursor = window.cursor_position().map_err(failed)?;
+    let origin = window.inner_position().map_err(failed)?;
+    Ok(CursorPoint {
+        x: (cursor.x - f64::from(origin.x)) / scale,
+        y: (cursor.y - f64::from(origin.y)) / scale,
+    })
+}
+
+/// 描かれていないところでは、背後の窓を操作できるようにする (要件 F-13-5)。
+#[tauri::command]
+pub fn window_set_click_through(window: Window, ignore: bool) -> Result<()> {
+    window.set_ignore_cursor_events(ignore).map_err(failed)
 }
 
 /// 掴んで窓ごと動かす (要件 F-13-6)。

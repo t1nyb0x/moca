@@ -55,6 +55,15 @@ import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
 
+/** カメラの視野 (縦、度)。全身の構図の計算もこれに従う。 */
+const CAMERA_FOV_DEG = 30;
+
+/** 全身の構図で、カメラを身長の何倍の距離に置くか。 */
+const FULL_DISTANCE_FACTOR = 2.0;
+
+/** マスコットの窓に持たせる左右の余裕。髪が少し揺れても切れないように。 */
+const MASCOT_WIDTH_MARGIN = 1.08;
+
 const DEFAULT_IDLE: IdleSettings = {
   blink: true,
   saccade: true,
@@ -100,6 +109,10 @@ export class Viewer {
   #breath: BreathState;
   /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
   #framing: FramingPreset | null = null;
+  /** 当たり判定で測りたい点。次の描画で読む (要件 F-13-5)。 */
+  #alphaProbe: { x: number; y: number } | null = null;
+  #alphaProbeResult: number | null = null;
+  readonly #probeBuffer = new Uint8Array(4);
   /**
    * 読み込みの世代。追い越しを捨てるために使う。
    *
@@ -147,7 +160,7 @@ export class Viewer {
 
     this.#scene = new THREE.Scene();
 
-    this.#camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    this.#camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, 0.1, 100);
     this.#camera.position.set(0, 1.3, 2.2);
     this.#scene.add(this.#camera);
 
@@ -372,6 +385,49 @@ export class Viewer {
     this.#refitOnResize = enabled;
   }
 
+  /**
+   * 次の描画でこの点の不透明度を測る (要件 F-13-5)。座標はキャンバス内の
+   * CSS 画素。
+   *
+   * WebGL の描画結果は、描いたフレームの中でしか読み出せない。任意の時点で
+   * 読むには `preserveDrawingBuffer` が要るが、常時の描画が重くなる。測る点を
+   * 預かって描画の直後に読む形にすれば、その代償を払わずに済む。
+   */
+  probeAlpha(x: number, y: number): void {
+    this.#alphaProbe = { x, y };
+  }
+
+  /** 直近に測った不透明度 (0〜1)。まだ測っていなければ null。 */
+  probedAlpha(): number | null {
+    return this.#alphaProbeResult;
+  }
+
+  /**
+   * マスコット表示に必要な窓の縦横比 (横 / 縦)。モデルが無ければ null。
+   *
+   * 構図は全身に固定なので、外接箱から必要な横幅が決まる。読み込みのたびに
+   * 一度だけ求める。髪の揺れに合わせて毎フレーム変えると窓が震える。
+   */
+  mascotAspect(): number | null {
+    const adapter = this.#adapter;
+    if (adapter === null) return null;
+
+    const height = adapter.height();
+    if (!(height > 0)) return null;
+
+    const distance = height * FULL_DISTANCE_FACTOR;
+    const visibleHeight =
+      2 * distance * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV_DEG / 2));
+
+    // 左右のどちらかへ寄っていても収まるよう、遠いほうの端で測る
+    const box = new THREE.Box3().setFromObject(adapter.object);
+    const halfWidth = Math.max(Math.abs(box.min.x), Math.abs(box.max.x));
+    if (!(halfWidth > 0)) return null;
+
+    const needed = halfWidth * 2 * MASCOT_WIDTH_MARGIN;
+    return needed / visibleHeight;
+  }
+
   setFraming(preset: FramingPreset): void {
     const adapter = this.#adapter;
     if (adapter === null) return;
@@ -396,7 +452,7 @@ export class Viewer {
         // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
         // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
         // 1.07h を確保し、上下におよそ 3% の余白を残す。
-        this.#camera.position.set(0, height * 0.55, height * 2.0);
+        this.#camera.position.set(0, height * 0.55, height * FULL_DISTANCE_FACTOR);
         this.#controls.target.set(0, height * 0.5, 0);
         break;
     }
@@ -503,5 +559,28 @@ export class Viewer {
 
     this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
+    this.#readAlphaProbe();
+  }
+
+  /** 描画の直後に呼ぶ。ここを外すと読み出せる保証が無くなる。 */
+  #readAlphaProbe(): void {
+    const probe = this.#alphaProbe;
+    if (probe === null) return;
+    this.#alphaProbe = null;
+
+    const canvas = this.#renderer.domElement;
+    const ratio = this.#renderer.getPixelRatio();
+    const x = Math.round(probe.x * ratio);
+    // WebGL の原点は左下。CSS の座標は左上なので上下を入れ替える。
+    const y = Math.round((canvas.clientHeight - probe.y) * ratio);
+
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) {
+      this.#alphaProbeResult = 0;
+      return;
+    }
+
+    const gl = this.#renderer.getContext();
+    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.#probeBuffer);
+    this.#alphaProbeResult = (this.#probeBuffer[3] ?? 0) / 255;
   }
 }

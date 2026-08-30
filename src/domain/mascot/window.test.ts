@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   canEnterMascot,
+  clampAspect,
   clampScale,
+  DEFAULT_ASPECT,
   DEFAULT_SCALE,
-  MASCOT_ASPECT,
+  MAX_ASPECT,
   MAX_SCALE,
+  MIN_ASPECT,
   MIN_SCALE,
   mascotWindowSize,
 } from "./window";
@@ -55,6 +58,23 @@ describe("canEnterMascot", () => {
   });
 });
 
+describe("clampAspect", () => {
+  it("範囲の内側はそのまま返す", () => {
+    expect(clampAspect(0.5)).toBe(0.5);
+  });
+
+  it("極端な値は範囲へ収める", () => {
+    // 細すぎても平たすぎても掴めなくなる
+    expect(clampAspect(0.001)).toBe(MIN_ASPECT);
+    expect(clampAspect(99)).toBe(MAX_ASPECT);
+  });
+
+  it("数として読めない値は既定へ倒す", () => {
+    expect(clampAspect(Number.NaN)).toBe(DEFAULT_ASPECT);
+    expect(clampAspect(null)).toBe(DEFAULT_ASPECT);
+  });
+});
+
 describe("mascotWindowSize", () => {
   it("倍率は画面の高さに対する割合として効く", () => {
     const size = mascotWindowSize(0.5, 1000);
@@ -62,8 +82,23 @@ describe("mascotWindowSize", () => {
   });
 
   it("横幅は縦横比から決まる", () => {
+    const size = mascotWindowSize(0.5, 1000, 0.4);
+    expect(size.width).toBe(200);
+  });
+
+  it("縦横比を渡さなければ既定を使う", () => {
     const size = mascotWindowSize(0.5, 1000);
-    expect(size.width).toBe(Math.round(500 * MASCOT_ASPECT));
+    expect(size.width).toBe(Math.round(500 * DEFAULT_ASPECT));
+  });
+
+  it("極端な縦横比は範囲へ収める", () => {
+    // モデルの外接箱から求めるので、壊れた値が来ても窓を潰さない
+    expect(mascotWindowSize(0.5, 1000, 99)).toEqual(
+      mascotWindowSize(0.5, 1000, MAX_ASPECT),
+    );
+    expect(mascotWindowSize(0.5, 1000, 0)).toEqual(
+      mascotWindowSize(0.5, 1000, MIN_ASPECT),
+    );
   });
 
   it("整数の画素にそろえる", () => {

@@ -5,7 +5,7 @@ import type { ProviderProfileDto } from "@/ipc/generated/ProviderProfileDto";
 import type { Settings } from "@/ipc/generated/Settings";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { ChatResult } from "@/ipc/generated/ChatResult";
-import { MIN_SCALE } from "@/domain/mascot/window";
+import { DEFAULT_ASPECT, MIN_SCALE } from "@/domain/mascot/window";
 
 vi.mock("@/ipc", () => ({
   settingsGet: vi.fn(),
@@ -23,6 +23,8 @@ vi.mock("@/ipc", () => ({
   conversationDelete: vi.fn(),
   ttsSynthesize: vi.fn(),
   windowSetMascot: vi.fn(),
+  windowSetClickThrough: vi.fn(),
+  windowCursorPosition: vi.fn(),
   windowSetSize: vi.fn(),
   windowSize: vi.fn(),
   windowStartDrag: vi.fn(),
@@ -120,6 +122,10 @@ beforeEach(() => {
   mocked.settingsSet.mockResolvedValue(undefined);
   mocked.conversationsIndex.mockResolvedValue([]);
   mocked.conversationDelete.mockResolvedValue(undefined);
+  mocked.windowSetMascot.mockResolvedValue(undefined);
+  mocked.windowSetSize.mockResolvedValue(undefined);
+  mocked.windowSize.mockResolvedValue({ width: 1100, height: 720 });
+  mocked.windowSetClickThrough.mockResolvedValue(undefined);
 });
 
 describe("会話の一覧", () => {
@@ -663,6 +669,45 @@ describe("診断", () => {
       await instance.getState().setMascotScale(0.8);
 
       expect(mocked.windowSetSize).toHaveBeenCalled();
+    });
+
+    it("モデルの縦横比に合わせて窓の横幅が決まる", async () => {
+      // 要件 F-13-4。透明なだけの領域を左右に残さない
+      const instance = shown();
+      instance.setState({ modelAspect: 0.4 });
+
+      await instance.getState().setMascot(true);
+
+      const [width, height] = mocked.windowSetSize.mock.calls[0] ?? [];
+      expect(width).toBe(Math.round((height as number) * 0.4));
+    });
+
+    it("縦横比が分からなければ既定で組む", async () => {
+      const instance = shown();
+      instance.setState({ modelAspect: null });
+
+      await instance.getState().setMascot(true);
+
+      const [width, height] = mocked.windowSetSize.mock.calls[0] ?? [];
+      expect(width).toBe(Math.round((height as number) * DEFAULT_ASPECT));
+    });
+
+    it("モデルを測り終えたら窓を合わせ直す", async () => {
+      // 起動時はモデルを測る前に窓を組むため、既定の縦横比で出来ている
+      const instance = shown();
+      await instance.getState().setMascot(true);
+      vi.clearAllMocks();
+
+      instance.getState().setModelAspect(0.35);
+
+      const [width, height] = mocked.windowSetSize.mock.calls[0] ?? [];
+      expect(width).toBe(Math.round((height as number) * 0.35));
+    });
+
+    it("表示していなければ測り直しても窓は触らない", async () => {
+      const instance = shown();
+      instance.getState().setModelAspect(0.35);
+      expect(mocked.windowSetSize).not.toHaveBeenCalled();
     });
 
     it("表示していなければ窓は触らない", async () => {
