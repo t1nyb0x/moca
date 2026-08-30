@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 
 import type { CanonicalEmotion } from "@/domain/emotion/types";
+import type { PoseMap } from "@/domain/motion/pose";
 import type { WeightMap } from "@/domain/motion/types";
 
 export type ModelFormatName = "vrm" | "pmx";
@@ -49,8 +50,14 @@ export interface ModelAdapter {
   /** 合成済みの重みを書き込む。 */
   applyWeights(weights: WeightMap): void;
 
-  /** 呼吸をボーンの回転として与える。表情モーフでは表せないため別経路。 */
-  applyBreath(chestPitchRadians: number, spinePitchRadians: number): void;
+  /**
+   * 姿勢をボーンの回転として与える (要件 F-14)。
+   *
+   * 呼吸・待機の動き・感情の姿勢はいずれもモーフでは表せないため、この
+   * 経路を通る。値は基準の姿勢からの差 (ラジアン)。当たらないボーン名は
+   * 読み飛ばす。
+   */
+  applyPose(pose: PoseMap): void;
 
   /** 毎フレーム呼ぶ。SpringBone や視線の更新を含む。 */
   update(deltaSeconds: number): void;

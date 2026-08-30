@@ -1,5 +1,5 @@
 import { composeWeights, type ComposeInput } from "@/domain/motion/compose";
-import type { BreathOutput } from "@/domain/motion/breath";
+import type { PoseMap } from "@/domain/motion/pose";
 import type { ModelAdapter } from "./ModelAdapter";
 
 /**
@@ -9,8 +9,8 @@ import type { ModelAdapter } from "./ModelAdapter";
  * 担う薄い層で、テストの対象外とする。
  */
 export class MorphApplier {
-  apply(adapter: ModelAdapter, input: ComposeInput, breath: BreathOutput): void {
+  apply(adapter: ModelAdapter, input: ComposeInput, pose: PoseMap): void {
     adapter.applyWeights(composeWeights(input));
-    adapter.applyBreath(breath.chestPitchRadians, breath.spinePitchRadians);
+    adapter.applyPose(pose);
   }
 }

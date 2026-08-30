@@ -8,6 +8,7 @@ import {
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import type { Viseme } from "@/domain/lipsync/viseme";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
+import type { PoseMap } from "@/domain/motion/pose";
 import type { WeightMap } from "@/domain/motion/types";
 import {
   applyOverrides,
@@ -78,6 +79,13 @@ export class PmxAdapter implements ModelAdapter {
    * 消される。値を持ち回り、tick の直後に書き込む。
    */
   #pendingMorphs: ReadonlyMap<string, number> = new Map();
+  /**
+   * 次の `update` で当てる姿勢 (要件 F-14)。
+   *
+   * ランタイムがボーンを書き換えるので、ここでは預かるだけにする。
+   * PMX のボーン名は標準化されていないため、当たるのは胸と背骨だけ。
+   * それ以外は読み飛ばす (F-14-6)。
+   */
   #pendingChestPitch = 0;
   #pendingSpinePitch = 0;
   /** 物理演算に失敗したら諦める。描画ごと止めるより無いほうがまし。 */
@@ -278,9 +286,9 @@ export class PmxAdapter implements ModelAdapter {
     return [...names];
   }
 
-  applyBreath(chestPitchRadians: number, spinePitchRadians: number): void {
-    this.#pendingChestPitch = chestPitchRadians;
-    this.#pendingSpinePitch = spinePitchRadians;
+  applyPose(pose: PoseMap): void {
+    this.#pendingChestPitch = pose.chest?.x ?? 0;
+    this.#pendingSpinePitch = pose.spine?.x ?? 0;
   }
 
   /**
