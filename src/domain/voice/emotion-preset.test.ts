@@ -17,6 +17,17 @@ describe("resolveDefaultPresets", () => {
     expect(resolveDefaultPresets(CHIFUYU).neutral.components).toEqual({ 普通: 1 });
   });
 
+  it("専用の成分が当たったら抑揚は触らない", () => {
+    // 成分で感情を表せているのに抑揚まで動かすと、二重に効いて作り物めいた
+    // 声になる。CeVIO は抑揚を 50 から動かすほど平板に聞こえる。
+    const presets = resolveDefaultPresets(CHIFUYU);
+    for (const emotion of ["happy", "angry", "sad", "relaxed"] as const) {
+      expect(presets[emotion].speed).toBeNull();
+      expect(presets[emotion].pitch).toBeNull();
+      expect(presets[emotion].intonation).toBeNull();
+    }
+  });
+
   it("専用の成分が無い感情は普通のまま抑揚で差を出す", () => {
     // 驚きを持つキャストは少ない
     const presets = resolveDefaultPresets(CHIFUYU);

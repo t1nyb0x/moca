@@ -230,6 +230,7 @@ impl AppState {
         character_id: &str,
         text: &str,
         emotion: &str,
+        intensity: f64,
     ) -> Result<Vec<u8>> {
         if text.trim().is_empty() {
             return Err(CommandError::invalid("読み上げる本文がありません"));
@@ -244,11 +245,29 @@ impl AppState {
             return Err(CommandError::invalid("音声が無効になっています"));
         }
 
-        let preset = settings
+        // タグの強さと、利用者が決めた効き具合の積だけ中立から寄せる。
+        // 名前だけを見ていた頃は [happy:0.3] も [happy:1.0] も同じ声だった。
+        let target = settings
             .emotion_presets
             .get(emotion)
             .cloned()
             .unwrap_or_default();
+        let neutral = settings
+            .emotion_presets
+            .get("neutral")
+            .cloned()
+            .unwrap_or_default();
+        let strength = if settings.emotion_strength.is_finite() {
+            settings.emotion_strength.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let amount = if intensity.is_finite() {
+            intensity.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let preset = crate::tts::blend::blend(&neutral, &target, amount * strength);
 
         let synthesizer = Self::synthesizer(settings.kind, &settings.base_url)?;
         Ok(synthesizer

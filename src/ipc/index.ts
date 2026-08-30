@@ -5,6 +5,7 @@
  * ここで手書きしてはならない。
  */
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import type { ChatResult } from "./generated/ChatResult";
 import type { ChatStreamRequest } from "./generated/ChatStreamRequest";
@@ -19,6 +20,8 @@ import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
 import type { Settings } from "./generated/Settings";
 import type { SpeakerInfo } from "./generated/SpeakerInfo";
 import type { TtsKind } from "./generated/TtsKind";
+import type { CursorPoint } from "./generated/CursorPoint";
+import type { WindowSize } from "./generated/WindowSize";
 import { toCommandError } from "./errors";
 
 /** 失敗を必ず CommandError にそろえる。 */
@@ -143,7 +146,48 @@ export const ttsSynthesize = (
   characterId: string,
   text: string,
   emotion: string,
-): Promise<ArrayBuffer> => call("tts_synthesize", { characterId, text, emotion });
+  intensity: number,
+): Promise<ArrayBuffer> =>
+  call("tts_synthesize", { characterId, text, emotion, intensity });
+
+/**
+ * マスコット表示へ切り替える (要件 F-13-1)。
+ *
+ * 透過は生成時に決まっているため、ここでは枠・影・最前面と、大きさの下限を
+ * 切り替える (ADR-0016)。
+ */
+export const windowSetMascot = (enabled: boolean): Promise<void> =>
+  call("window_set_mascot", { enabled });
+
+export const windowSetSize = (width: number, height: number): Promise<void> =>
+  call("window_set_size", { width, height });
+
+/** マスコット表示へ入る前の大きさを覚えるために読む。 */
+export const windowSize = (): Promise<WindowSize> => call("window_size");
+
+/**
+ * 窓に対するカーソルの位置 (要件 F-13-5)。
+ *
+ * クリックスルー中は WebView へマウスが届かないため、位置はこちらから読む。
+ */
+export const windowCursorPosition = (): Promise<CursorPoint> =>
+  call("window_cursor_position");
+
+/** 描かれていないところでは背後の窓を操作できるようにする (要件 F-13-5)。 */
+export const windowSetClickThrough = (ignore: boolean): Promise<void> =>
+  call("window_set_click_through", { ignore });
+
+/** 掴んで窓ごと動かす (要件 F-13-6)。 */
+export const windowStartDrag = (): Promise<void> => call("window_start_drag");
+
+/**
+ * トレイからの表示切り替えを受け取る (要件 F-13-7)。
+ *
+ * 窓を直に触らせず通知だけを受けるのは、モデルが出ていなければ入れないと
+ * いった判断 (F-13-1、F-13-10) を画面側に集めておくため。
+ */
+export const onMascotToggle = (handler: () => void): Promise<() => void> =>
+  listen("mascot://toggle", () => handler());
 
 export { isCommandError, toCommandError } from "./errors";
 export type { CommandError, CommandErrorKind } from "./errors";

@@ -16,7 +16,15 @@ import type { EmotionMapping } from "@/ipc/generated/EmotionMapping";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
-import { NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import { CANONICAL_EMOTIONS, NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import { resolveDefaultPresets } from "@/domain/voice/emotion-preset";
+import {
+  canEnterMascot,
+  CHAT_EXTRA_WIDTH,
+  clampScale,
+  DEFAULT_SCALE,
+  mascotWindowSize,
+} from "@/domain/mascot/window";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import type { Message } from "@/ipc/generated/Message";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
@@ -93,6 +101,28 @@ export type AppState = {
   /** 読み込んだモデルの素性。原因の切り分けに使う。 */
   modelDiagnostics: ModelDiagnostics | null;
   showViewer: boolean;
+  /** マスコット表示か (要件 F-13-1)。 */
+  mascot: boolean;
+  /**
+   * マスコット表示へ入る前の窓の大きさ。戻るときに復元する。
+   *
+   * 保存はしない。次の起動では通常表示の既定に従えばよい。
+   */
+  normalSize: { readonly width: number; readonly height: number } | null;
+  /**
+   * モデルを収めるのに必要な窓の縦横比 (要件 F-13-4)。
+   *
+   * 描画側が読み込みのたびに測って入れる。保存はしない。モデルごとに違い、
+   * 次に読んだときまた測るため。
+   */
+  modelAspect: number | null;
+  /**
+   * マスコット表示で吹き出しを開いているか (要件 F-13-8)。
+   *
+   * 窓はモデルの幅ぴったりなので、開くあいだだけ横へ広げる。保存はしない。
+   * 次の起動は閉じた姿から始める。
+   */
+  mascotChat: boolean;
 
   bootstrap: () => Promise<void>;
   setActiveCharacter: (id: string | null) => Promise<void>;
@@ -131,7 +161,39 @@ export type AppState = {
   openModel: (path: string) => Promise<void>;
   clearModel: () => Promise<void>;
   setShowViewer: (show: boolean) => Promise<void>;
+  /**
+   * マスコット表示を切り替える (要件 F-13-1)。
+   *
+   * モデルが表示されていなければ入れない。全面が透明になり、全面が
+   * クリックスルーとなって操作できない窓が残るため。
+   */
+  setMascot: (enabled: boolean) => Promise<void>;
+  /** マスコット表示の倍率 (要件 F-13-3)。範囲へ収めてから保存する。 */
+  setMascotScale: (scale: number) => Promise<void>;
+  /** モデルを収めるのに必要な縦横比。描画側が測って入れる (要件 F-13-4)。 */
+  setModelAspect: (aspect: number | null) => void;
+  /** 吹き出しの開閉 (要件 F-13-8)。窓の幅も合わせる。 */
+  setMascotChat: (open: boolean) => Promise<void>;
 };
+
+/** 画面の高さ。取れない環境では窓の寸法側が既定へ倒す。 */
+function screenHeight(): number {
+  return typeof window === "undefined" ? 0 : window.screen.height;
+}
+
+/** マスコット表示の窓の大きさ。吹き出しが出ていれば横へ足す。 */
+function mascotSizeOf(
+  settings: Settings | null,
+  aspect: number | null,
+  chatOpen: boolean,
+): { readonly width: number; readonly height: number } {
+  return mascotWindowSize(
+    settings?.mascotScale ?? DEFAULT_SCALE,
+    screenHeight(),
+    aspect,
+    chatOpen ? CHAT_EXTRA_WIDTH : 0,
+  );
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -195,6 +257,46 @@ function requireCharacter(
     },
   });
   return false;
+}
+
+/**
+ * 感情ごとの声の割り当てを用意する (要件 F-12-3)。
+ *
+ * 割り当てが空のとき、合成器へ感情成分を一切送らない。CeVIO の `Talker` は
+ * 設定した値を保持し続けるため、前に入っていた値でずっと読み上げられる。
+ * 感情タグは出ているのに声が変わらない、という形で現れる。
+ *
+ * 設定画面を開かないと作られないのでは気づけないので、起動時に埋めておく。
+ * 合成器が動いていなければ何もしない。声が出ないだけで会話は成り立つ。
+ */
+async function ensureVoicePresets(
+  character: CharacterProfile | undefined,
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+): Promise<void> {
+  const voice = character?.voiceSettings;
+  if (character === undefined || voice == null) return;
+  if (!voice.enabled || voice.speaker === "") return;
+  if (Object.keys(voice.emotionPresets).length > 0) return;
+
+  try {
+    const axes = await ipc.ttsEmotionAxes(voice.kind, voice.baseUrl, voice.speaker);
+    const defaults = resolveDefaultPresets(axes);
+    const emotionPresets = Object.fromEntries(
+      CANONICAL_EMOTIONS.map((emotion) => [emotion, defaults[emotion]]),
+    );
+    const saved = await ipc.characterUpsert({
+      ...character,
+      voiceSettings: { ...voice, emotionPresets },
+    });
+    set({
+      characters: get().characters.map((item) =>
+        item.id === saved.id ? saved : item,
+      ),
+    });
+  } catch {
+    // 合成器が動いていないだけ。起動を妨げない。
+  }
 }
 
 function userMessage(content: string): Message {
@@ -276,6 +378,10 @@ export function createAppStore(): UseBoundStore<
     model: null,
     modelDiagnostics: null,
     showViewer: true,
+    mascot: false,
+    normalSize: null,
+    modelAspect: null,
+    mascotChat: false,
 
     clearError: () => set({ error: null }),
 
@@ -361,6 +467,101 @@ export function createAppStore(): UseBoundStore<
       }
     },
 
+    setMascot: async (enabled) => {
+      const state = get();
+      if (state.mascot === enabled) return;
+      // 描かれるものが無ければ入れない (要件 F-13-1)。逃げ道を用意するのでは
+      // なく、操作できない窓になる状態そのものを避ける。
+      if (
+        enabled &&
+        !canEnterMascot({ hasModel: state.model !== null, showViewer: state.showViewer })
+      ) {
+        return;
+      }
+
+      try {
+        // 入る前の大きさを覚えておき、戻るときに復元する
+        const normalSize = enabled ? await ipc.windowSize() : state.normalSize;
+        // 通常表示へ戻るときは吹き出しも畳む。開いたままにしても出す場所がない。
+        set({ mascot: enabled, normalSize, mascotChat: false });
+
+        await ipc.windowSetMascot(enabled);
+
+        const size = enabled
+          ? mascotSizeOf(state.settings, state.modelAspect, false)
+          : (normalSize ?? { width: 1100, height: 720 });
+        await ipc.windowSetSize(size.width, size.height);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, mascot: enabled };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    setModelAspect: (aspect) => {
+      set({ modelAspect: aspect });
+
+      // 起動時はモデルを測る前に窓を組むため、既定の縦横比で出来ている。
+      // 測れたところで合わせ直す (要件 F-13-4)。
+      const state = get();
+      if (!state.mascot) return;
+      const size = mascotSizeOf(state.settings, aspect, state.mascotChat);
+      void ipc.windowSetSize(size.width, size.height).catch((error: unknown) => {
+        set({ error: error as CommandError });
+      });
+    },
+
+    setMascotChat: async (open) => {
+      const state = get();
+      // 通常表示には出す場所がない。話すなら本来のチャット画面がある。
+      if (!state.mascot || state.mascotChat === open) return;
+
+      set({ mascotChat: open });
+      const size = mascotSizeOf(state.settings, state.modelAspect, open);
+      try {
+        await ipc.windowSetSize(size.width, size.height);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
+    setMascotScale: async (scale) => {
+      const state = get();
+      const clamped = clampScale(scale);
+
+      if (state.mascot) {
+        const size = mascotWindowSize(
+          clamped,
+          screenHeight(),
+          state.modelAspect,
+          state.mascotChat ? CHAT_EXTRA_WIDTH : 0,
+        );
+        try {
+          await ipc.windowSetSize(size.width, size.height);
+        } catch (error) {
+          set({ error: error as CommandError });
+        }
+      }
+
+      const settings = get().settings;
+      if (settings === null) return;
+      const next = { ...settings, mascotScale: clamped };
+      set({ settings: next });
+      try {
+        await ipc.settingsSet(next);
+      } catch (error) {
+        set({ error: error as CommandError });
+      }
+    },
+
     setProvider: async (providerId) => {
       const state = get();
       const character = state.characters.find(
@@ -409,6 +610,12 @@ export function createAppStore(): UseBoundStore<
         if (active?.modelPath != null) {
           await get().openModel(active.modelPath);
         }
+
+        // 復元はモデルを出せたときだけ (要件 F-13-9)。ここを守らないと、
+        // 読み込みに失敗した起動が操作できないアプリになる。
+        if (settings.mascot) await get().setMascot(true);
+
+        await ensureVoicePresets(active, get, set);
       } catch (error) {
         set({ error: error as CommandError });
       }
@@ -445,11 +652,15 @@ export function createAppStore(): UseBoundStore<
     },
 
     clearModel: async () => {
+      // モデルが消えると全面が透明になる。先に通常表示へ戻す (要件 F-13-10)。
+      await get().setMascot(false);
       set({ model: null, modelDiagnostics: null });
       await get().persistModelPath(null);
     },
 
     setShowViewer: async (show) => {
+      // 3D を隠すと描かれるものが無くなる (要件 F-13-10)。
+      if (!show) await get().setMascot(false);
       set({ showViewer: show });
       const settings = get().settings;
       if (settings === null) return;

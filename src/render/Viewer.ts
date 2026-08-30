@@ -55,6 +55,15 @@ import { loadVrm } from "./VrmAdapter";
 
 export type FramingPreset = "face" | "upper" | "full";
 
+/** カメラの視野 (縦、度)。全身の構図の計算もこれに従う。 */
+const CAMERA_FOV_DEG = 30;
+
+/** 全身の構図で、カメラを身長の何倍の距離に置くか。 */
+const FULL_DISTANCE_FACTOR = 2.0;
+
+/** マスコットの窓に持たせる左右の余裕。髪が少し揺れても切れないように。 */
+const MASCOT_WIDTH_MARGIN = 1.08;
+
 const DEFAULT_IDLE: IdleSettings = {
   blink: true,
   saccade: true,
@@ -98,6 +107,21 @@ export class Viewer {
   #blink: BlinkState;
   #saccade: SaccadeState;
   #breath: BreathState;
+  /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
+  #framing: FramingPreset | null = null;
+  /** 当たり判定で測りたい点。次の描画で読む (要件 F-13-5)。 */
+  #alphaProbe: { x: number; y: number } | null = null;
+  #alphaProbeResult: number | null = null;
+  readonly #probeBuffer = new Uint8Array(4);
+  /**
+   * 読み込みの世代。追い越しを捨てるために使う。
+   *
+   * `setModel` は読み込みのあいだ待つ。その間に次の指示が来ると、古いほうも
+   * 完了して場面へ足されてしまう。二体が重なり、表情の制御を受けるのは後から
+   * 代入された片方だけになるため、もう一体が既定の姿のまま残る。
+   */
+  #loadGeneration = 0;
+  #refitOnResize = false;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
   #audioLipSync: AudioLipSyncState = createAudioLipSyncState();
@@ -118,6 +142,13 @@ export class Viewer {
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
+  /**
+   * カメラ操作が一段落したときに呼ばれる。
+   *
+   * 位置を覚えさせる用 (要件 F-03-5)。動かしている最中ではなく、手を離した
+   * ところで知らせる。毎フレーム保存すると書き込みが際限なく増える。
+   */
+  onCameraSettled: (() => void) | null = null;
 
   constructor(container: HTMLElement, seed: number = Date.now()) {
     this.#container = container;
@@ -129,7 +160,7 @@ export class Viewer {
 
     this.#scene = new THREE.Scene();
 
-    this.#camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    this.#camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, 0.1, 100);
     this.#camera.position.set(0, 1.3, 2.2);
     this.#scene.add(this.#camera);
 
@@ -147,6 +178,7 @@ export class Viewer {
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
     this.#controls.target.set(0, 1.2, 0);
     this.#controls.enableDamping = true;
+    this.#controls.addEventListener("end", () => this.onCameraSettled?.());
     this.#controls.update();
 
     this.#blink = createBlinkState(seed);
@@ -197,11 +229,20 @@ export class Viewer {
 
   /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
   async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
+    const generation = ++this.#loadGeneration;
     this.#clearModel();
     if (context === null) return null;
 
     const adapter =
       context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
+
+    // 待っているあいだに次の指示が来ていたら、出来たものは捨てる。
+    // 足すと場面に二体並び、片方が既定の姿のまま残る。
+    if (generation !== this.#loadGeneration) {
+      adapter.dispose();
+      return null;
+    }
+
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
@@ -321,6 +362,72 @@ export class Viewer {
     this.#scene.background = color === null ? null : new THREE.Color(color);
   }
 
+  /**
+   * カメラ操作の可否 (要件 F-13-6)。
+   *
+   * マスコット表示では掴む操作を窓の移動へ譲る。掴んで動かす対象はカメラ
+   * ではなくモデルであるため。
+   */
+  setInteractive(enabled: boolean): void {
+    // 止める前に一度そろえる。OrbitControls は内部に減衰用の状態を持って
+    // おり、そこが古いままだと以後の update で元の位置へ引き戻される。
+    this.#controls.update();
+    this.#controls.enabled = enabled;
+  }
+
+  /**
+   * 窓の寸法が変わったら構図を取り直すか (要件 F-13-3)。
+   *
+   * マスコット表示では倍率で窓ごと拡縮するため、寸法が変わるたびに構図が
+   * ずれる。取り直さないと頭や足が切れる。
+   */
+  setRefitOnResize(enabled: boolean): void {
+    this.#refitOnResize = enabled;
+  }
+
+  /**
+   * 次の描画でこの点の不透明度を測る (要件 F-13-5)。座標はキャンバス内の
+   * CSS 画素。
+   *
+   * WebGL の描画結果は、描いたフレームの中でしか読み出せない。任意の時点で
+   * 読むには `preserveDrawingBuffer` が要るが、常時の描画が重くなる。測る点を
+   * 預かって描画の直後に読む形にすれば、その代償を払わずに済む。
+   */
+  probeAlpha(x: number, y: number): void {
+    this.#alphaProbe = { x, y };
+  }
+
+  /** 直近に測った不透明度 (0〜1)。まだ測っていなければ null。 */
+  probedAlpha(): number | null {
+    return this.#alphaProbeResult;
+  }
+
+  /**
+   * マスコット表示に必要な窓の縦横比 (横 / 縦)。モデルが無ければ null。
+   *
+   * 構図は全身に固定なので、外接箱から必要な横幅が決まる。読み込みのたびに
+   * 一度だけ求める。髪の揺れに合わせて毎フレーム変えると窓が震える。
+   */
+  mascotAspect(): number | null {
+    const adapter = this.#adapter;
+    if (adapter === null) return null;
+
+    const height = adapter.height();
+    if (!(height > 0)) return null;
+
+    const distance = height * FULL_DISTANCE_FACTOR;
+    const visibleHeight =
+      2 * distance * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV_DEG / 2));
+
+    // 左右のどちらかへ寄っていても収まるよう、遠いほうの端で測る
+    const box = new THREE.Box3().setFromObject(adapter.object);
+    const halfWidth = Math.max(Math.abs(box.min.x), Math.abs(box.max.x));
+    if (!(halfWidth > 0)) return null;
+
+    const needed = halfWidth * 2 * MASCOT_WIDTH_MARGIN;
+    return needed / visibleHeight;
+  }
+
   setFraming(preset: FramingPreset): void {
     const adapter = this.#adapter;
     if (adapter === null) return;
@@ -330,6 +437,8 @@ export class Viewer {
 
     // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
     // モデルの視線もそちらへ向いて表情が不自然になる。
+    this.#framing = preset;
+
     switch (preset) {
       case "face":
         this.#camera.position.set(0, head.y, height * 0.42);
@@ -340,7 +449,10 @@ export class Viewer {
         this.#controls.target.set(0, head.y * 0.93, 0);
         break;
       case "full":
-        this.#camera.position.set(0, height * 0.55, height * 1.7);
+        // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
+        // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
+        // 1.07h を確保し、上下におよそ 3% の余白を残す。
+        this.#camera.position.set(0, height * 0.55, height * FULL_DISTANCE_FACTOR);
         this.#controls.target.set(0, height * 0.5, 0);
         break;
     }
@@ -384,6 +496,11 @@ export class Viewer {
     this.#renderer.setSize(width, height, false);
     this.#camera.aspect = width / height;
     this.#camera.updateProjectionMatrix();
+
+    // 窓ごと拡縮するマスコット表示では、寸法が変わるたびに構図を取り直す
+    if (this.#refitOnResize && this.#framing !== null) {
+      this.setFraming(this.#framing);
+    }
   }
 
   #loop = (): void => {
@@ -442,5 +559,28 @@ export class Viewer {
 
     this.#controls.update();
     this.#renderer.render(this.#scene, this.#camera);
+    this.#readAlphaProbe();
+  }
+
+  /** 描画の直後に呼ぶ。ここを外すと読み出せる保証が無くなる。 */
+  #readAlphaProbe(): void {
+    const probe = this.#alphaProbe;
+    if (probe === null) return;
+    this.#alphaProbe = null;
+
+    const canvas = this.#renderer.domElement;
+    const ratio = this.#renderer.getPixelRatio();
+    const x = Math.round(probe.x * ratio);
+    // WebGL の原点は左下。CSS の座標は左上なので上下を入れ替える。
+    const y = Math.round((canvas.clientHeight - probe.y) * ratio);
+
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) {
+      this.#alphaProbeResult = 0;
+      return;
+    }
+
+    const gl = this.#renderer.getContext();
+    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.#probeBuffer);
+    this.#alphaProbeResult = (this.#probeBuffer[3] ?? 0) / 255;
   }
 }

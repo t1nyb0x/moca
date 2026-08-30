@@ -32,3 +32,4 @@
 | [0013](0013-reasoning-separate-from-body.md) | 推論モデルの思考を本文と分けて扱う | 採択 |
 | [0014](0014-emotion-synced-to-speech.md) | 感情の切り替えを発話の再生位置に同期させる | 採択 |
 | [0015](0015-pmx-via-third-party-loader.md) | PMX の読み込みに第三者ライブラリを用いる | 採択 |
+| [0016](0016-single-transparent-window.md) | マスコット表示は単一の透過ウィンドウで実現する | 採択 |

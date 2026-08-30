@@ -4,6 +4,7 @@ pub mod logging;
 pub mod prompt;
 pub mod secret;
 pub mod storage;
+pub mod tray;
 pub mod tts;
 
 use std::sync::Arc;
@@ -43,6 +44,9 @@ pub fn run() {
                 "起動しました"
             );
 
+            // 常駐先。マスコット表示で窓を見失っても呼び戻せるようにする
+            tray::setup(app.handle())?;
+
             app.manage(AppState::new(
                 store,
                 Arc::new(KeyringStore::new(KEYRING_SERVICE)),
@@ -74,6 +78,12 @@ pub fn run() {
             commands::api::tts_speakers,
             commands::api::tts_emotion_axes,
             commands::api::tts_synthesize,
+            commands::window::window_set_mascot,
+            commands::window::window_set_size,
+            commands::window::window_size,
+            commands::window::window_cursor_position,
+            commands::window::window_set_click_through,
+            commands::window::window_start_drag,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri アプリケーションの起動に失敗しました");

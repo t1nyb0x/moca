@@ -2,9 +2,28 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAppStore } from "@/app/store";
 import { isSoftwareRenderer } from "@/domain/model/renderer";
-import { toAssetUrl } from "@/ipc";
+import { toAssetUrl, windowCursorPosition, windowSetClickThrough } from "@/ipc";
 import { Viewer } from "@/render/Viewer";
 import { ViewerToolbar } from "./ViewerToolbar";
+
+/**
+ * カメラ操作が終わってから位置を覚えるまでの待ち。
+ *
+ * 手を離すたびに書くと、少し直すつもりの操作でも書き込みが積み上がる。
+ * 続けて動かす間は書かず、落ち着いてから一度だけ書く。
+ */
+const CAMERA_SAVE_DELAY_MS = 800;
+
+/**
+ * 当たり判定を取り直す間隔。
+ *
+ * クリックスルー中は WebView へマウスが届かないため、位置は取りに行くしかない。
+ * 短いほど掴める感触が良くなるが、そのぶん往復が増える。
+ */
+const HIT_TEST_INTERVAL_MS = 80;
+
+/** これより薄いところは「描かれていない」とみなす。 */
+const SOLID_ALPHA = 0.1;
 
 /**
  * 3D ビューの器。
@@ -36,6 +55,113 @@ export function ViewerHost(): React.JSX.Element {
     // 初期状態を流し込む
     viewer.setLipSyncRate(state.settings?.lipSyncCharsPerSecond ?? 10);
     viewer.setBackgroundColor(state.settings?.backgroundColor ?? null);
+    viewer.setRefitOnResize(state.mascot);
+    viewer.setInteractive(!state.mascot);
+
+    /**
+     * 通常表示のカメラを当てる。
+     *
+     * 覚えた位置があればそこへ、無ければ既定の構図へ。読み込み直後と、
+     * マスコット表示から戻ったときの両方で使う。
+     */
+    const applyNormalCamera = (): void => {
+      const current = useAppStore.getState();
+      const character = current.characters.find(
+        (item) => item.id === current.activeCharacterId,
+      );
+      if (character?.cameraPreset != null) {
+        viewer.applyCameraState(character.cameraPreset);
+      } else {
+        // 構築時の固定値のままだと、モデルの大きさによらず同じ距離になり、
+        // 寄りすぎた絵で始まる。
+        viewer.setFraming("upper");
+      }
+    };
+
+    /**
+     * その点が掴めるか (要件 F-13-5)。
+     *
+     * ボタンなどの部品はキャンバスの外にあるので、先に見る。ここを飛ばすと
+     * 「戻る」が押せなくなり、マスコット表示から出られなくなる。
+     */
+    const isSolidAt = (x: number, y: number): boolean => {
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        return false;
+      }
+
+      const element = document.elementFromPoint(x, y);
+      if (element === null) return false;
+      if (element.closest("button, input, select, textarea, a") !== null) {
+        return true;
+      }
+
+      const canvas = container.querySelector("canvas");
+      if (canvas === null || element !== canvas) return false;
+
+      // 測定は次の描画で行われるので、判定に使うのは前回の値。80ms 前の、
+      // ほぼ同じ点の結果なので実用上は差し支えない。
+      const alpha = viewer.probedAlpha();
+      const rect = canvas.getBoundingClientRect();
+      viewer.probeAlpha(x - rect.left, y - rect.top);
+      return alpha !== null && alpha > SOLID_ALPHA;
+    };
+
+    let clickThrough = false;
+    let hitTimer: ReturnType<typeof setInterval> | null = null;
+
+    const applyHitTest = async (): Promise<void> => {
+      let point;
+      try {
+        point = await windowCursorPosition();
+      } catch {
+        // 取れない一回は見送る。次の巡回で取り直せばよい。
+        return;
+      }
+      const next = !isSolidAt(point.x, point.y);
+      if (next === clickThrough) return;
+      clickThrough = next;
+      try {
+        await windowSetClickThrough(next);
+      } catch {
+        // 切り替えられなければ、次の巡回でまた試す
+        clickThrough = !next;
+      }
+    };
+
+    const stopHitTest = (): void => {
+      if (hitTimer !== null) {
+        clearInterval(hitTimer);
+        hitTimer = null;
+      }
+      // 通常表示へ素通しを持ち込まない。残すと窓が一切触れなくなる。
+      if (clickThrough) {
+        clickThrough = false;
+        void windowSetClickThrough(false);
+      }
+    };
+
+    const startHitTest = (): void => {
+      if (hitTimer !== null) return;
+      hitTimer = setInterval(() => void applyHitTest(), HIT_TEST_INTERVAL_MS);
+    };
+
+    // 起動時にマスコット表示だと、下の購読は変化を取り逃がす。bootstrap が
+    // mascot を立てるのは、この効果が走るより前だからである。
+    if (useAppStore.getState().mascot) startHitTest();
+
+    // カメラ位置を自動で覚える (要件 F-03-5)。手を離してから少し置くのは、
+    // 回している最中の中間位置を書き込まないため。
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    viewer.onCameraSettled = () => {
+      // マスコット表示は全身に固定なので覚えない (F-13-2)。ここで保存すると
+      // 通常表示のために覚えた位置を全身で上書きしてしまう。
+      if (useAppStore.getState().mascot) return;
+      if (saveTimer !== null) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        void useAppStore.getState().saveCameraState(viewer.cameraState());
+      }, CAMERA_SAVE_DELAY_MS);
+    };
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
@@ -62,10 +188,23 @@ export function ViewerHost(): React.JSX.Element {
             (item) => item.id === current.activeCharacterId,
           );
 
-          // 覚えた位置があればそちらを優先する (要件 F-03-5)
-          if (character?.cameraPreset != null) {
-            viewer.applyCameraState(character.cameraPreset);
+          // マスコット表示では構図を全身に固定する (要件 F-13-2)。覚えた位置
+          // より優先する。
+          //
+          // ここで決め直すのは、起動時に購読が間に合わないため。bootstrap は
+          // モデルを読んだ直後に mascot を立てるが、この購読が張られるのは
+          // React の効果が走ってからで、その頃には変化が済んでいる。読み込みの
+          // 完了はこの購読より必ず後に来るので、ここが唯一確実な場所になる。
+          // マスコット表示では覚えた位置より全身を優先する (要件 F-13-2)
+          if (useAppStore.getState().mascot) {
+            viewer.setFraming("full");
+          } else {
+            applyNormalCamera();
           }
+
+          // 窓をモデルに合わせるための縦横比 (要件 F-13-4)。構図を決めた後に
+          // 測る。外接箱は構図に依らないが、順序を固定しておくほうが読みやすい。
+          useAppStore.getState().setModelAspect(viewer.mascotAspect());
 
           // 保存された割り当てがあれば反映する (PMX のみ)
           if (character?.emotionMapping != null) {
@@ -137,6 +276,22 @@ export function ViewerHost(): React.JSX.Element {
         (current) => current.settings?.backgroundColor ?? null,
         (color) => viewer.setBackgroundColor(color),
       ),
+      // マスコット表示では構図を全身に固定し、カメラ操作を止める (F-13-2、F-13-6)
+      store.subscribe(
+        (current) => current.mascot,
+        (mascot) => {
+          // 構図を先に決めてから止める。逆にすると OrbitControls の減衰用の
+          // 状態が古いまま残り、以後の update で元の位置へ引き戻される。
+          if (mascot) viewer.setFraming("full");
+          viewer.setRefitOnResize(mascot);
+          viewer.setInteractive(!mascot);
+          if (mascot) startHitTest();
+          else stopHitTest();
+          // 戻るときは全身のままにしない。マスコット表示の構図はあちらの
+          // 都合であって、利用者が通常表示のために覚えた位置ではない。
+          if (!mascot) applyNormalCamera();
+        },
+      ),
       store.subscribe(
         (current) =>
           current.characters.find((item) => item.id === current.activeCharacterId)
@@ -158,6 +313,9 @@ export function ViewerHost(): React.JSX.Element {
 
     return () => {
       for (const off of unsubscribe) off();
+      stopHitTest();
+      if (saveTimer !== null) clearTimeout(saveTimer);
+      viewer.onCameraSettled = null;
       viewer.dispose();
       viewerRef.current = null;
     };
