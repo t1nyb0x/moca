@@ -7,6 +7,14 @@ import { Viewer } from "@/render/Viewer";
 import { ViewerToolbar } from "./ViewerToolbar";
 
 /**
+ * カメラ操作が終わってから位置を覚えるまでの待ち。
+ *
+ * 手を離すたびに書くと、少し直すつもりの操作でも書き込みが積み上がる。
+ * 続けて動かす間は書かず、落ち着いてから一度だけ書く。
+ */
+const CAMERA_SAVE_DELAY_MS = 800;
+
+/**
  * 3D ビューの器。
  *
  * **この DOM は React の再レンダリング対象に含めない** (ADR-0007)。
@@ -38,6 +46,20 @@ export function ViewerHost(): React.JSX.Element {
     viewer.setBackgroundColor(state.settings?.backgroundColor ?? null);
     viewer.setRefitOnResize(state.mascot);
     viewer.setInteractive(!state.mascot);
+
+    // カメラ位置を自動で覚える (要件 F-03-5)。手を離してから少し置くのは、
+    // 回している最中の中間位置を書き込まないため。
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    viewer.onCameraSettled = () => {
+      // マスコット表示は全身に固定なので覚えない (F-13-2)。ここで保存すると
+      // 通常表示のために覚えた位置を全身で上書きしてしまう。
+      if (useAppStore.getState().mascot) return;
+      if (saveTimer !== null) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        void useAppStore.getState().saveCameraState(viewer.cameraState());
+      }, CAMERA_SAVE_DELAY_MS);
+    };
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
@@ -64,9 +86,22 @@ export function ViewerHost(): React.JSX.Element {
             (item) => item.id === current.activeCharacterId,
           );
 
-          // 覚えた位置があればそちらを優先する (要件 F-03-5)
-          if (character?.cameraPreset != null) {
+          // マスコット表示では構図を全身に固定する (要件 F-13-2)。覚えた位置
+          // より優先する。
+          //
+          // ここで決め直すのは、起動時に購読が間に合わないため。bootstrap は
+          // モデルを読んだ直後に mascot を立てるが、この購読が張られるのは
+          // React の効果が走ってからで、その頃には変化が済んでいる。読み込みの
+          // 完了はこの購読より必ず後に来るので、ここが唯一確実な場所になる。
+          if (useAppStore.getState().mascot) {
+            viewer.setFraming("full");
+          } else if (character?.cameraPreset != null) {
+            // 覚えた位置があればそちらを優先する (要件 F-03-5)
             viewer.applyCameraState(character.cameraPreset);
+          } else {
+            // 覚えた位置が無いときの既定。構築時の固定値のままだと、モデルの
+            // 大きさによらず同じ距離になり、寄りすぎた絵で始まる。
+            viewer.setFraming("upper");
           }
 
           // 保存された割り当てがあれば反映する (PMX のみ)
@@ -171,6 +206,8 @@ export function ViewerHost(): React.JSX.Element {
 
     return () => {
       for (const off of unsubscribe) off();
+      if (saveTimer !== null) clearTimeout(saveTimer);
+      viewer.onCameraSettled = null;
       viewer.dispose();
       viewerRef.current = null;
     };

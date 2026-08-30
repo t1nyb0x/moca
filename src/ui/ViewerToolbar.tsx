@@ -48,33 +48,26 @@ export function ViewerToolbar({
         ))}
       </div>
 
+      {/*
+        カメラ位置は操作のたびに自動で覚えるため (要件 F-03-5)、覚えさせる
+        ボタンと覚えた位置へ戻すボタンは意味を持たない。残るのは、覚えた
+        ものを捨てて既定の構図へ戻す操作だけ。
+      */}
       <div className="vtool__row">
         <button
           type="button"
-          title="いまのカメラ位置をこのキャラクターに覚えさせます"
+          disabled={saved === null}
+          title={
+            saved === null
+              ? "覚えた位置がありません"
+              : "覚えた位置を捨てて既定の構図へ戻します"
+          }
           onClick={() => {
-            const state = viewer.current?.cameraState();
-            if (state !== undefined) void saveCameraState(state);
+            void saveCameraState(null);
+            viewer.current?.setFraming("upper");
           }}
         >
-          位置を覚える
-        </button>
-        <button
-          type="button"
-          disabled={saved === null}
-          title={saved === null ? "覚えた位置がありません" : "覚えた位置に戻します"}
-          onClick={() => {
-            if (saved !== null) viewer.current?.applyCameraState(saved);
-          }}
-        >
-          戻す
-        </button>
-        <button
-          type="button"
-          disabled={saved === null}
-          onClick={() => void saveCameraState(null)}
-        >
-          忘れる
+          位置を忘れる
         </button>
       </div>
 

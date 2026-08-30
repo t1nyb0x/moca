@@ -121,6 +121,13 @@ export class Viewer {
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
+  /**
+   * カメラ操作が一段落したときに呼ばれる。
+   *
+   * 位置を覚えさせる用 (要件 F-03-5)。動かしている最中ではなく、手を離した
+   * ところで知らせる。毎フレーム保存すると書き込みが際限なく増える。
+   */
+  onCameraSettled: (() => void) | null = null;
 
   constructor(container: HTMLElement, seed: number = Date.now()) {
     this.#container = container;
@@ -150,6 +157,7 @@ export class Viewer {
     this.#controls = new OrbitControls(this.#camera, this.#renderer.domElement);
     this.#controls.target.set(0, 1.2, 0);
     this.#controls.enableDamping = true;
+    this.#controls.addEventListener("end", () => this.onCameraSettled?.());
     this.#controls.update();
 
     this.#blink = createBlinkState(seed);
