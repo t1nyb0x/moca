@@ -21,9 +21,19 @@ export function reportClientError(message: string, detail?: unknown): void {
   });
 }
 
+/**
+ * 失敗として扱わないもの。
+ *
+ * `ResizeObserver loop ...` は、観測している要素の寸法が一巡で収束しなかった
+ * ときにブラウザが出す通知で、次の描画で追いつく。マスコット表示は窓ごと
+ * 拡縮するため頻繁に出るが、これをログへ流すと本当の失敗が埋もれる。
+ */
+const IGNORED = [/^ResizeObserver loop/];
+
 /** 捕まえられなかった失敗をすべてログへ送る。 */
 export function installClientErrorReporting(): void {
   window.addEventListener("error", (event) => {
+    if (IGNORED.some((pattern) => pattern.test(event.message))) return;
     reportClientError(event.message, event.error);
   });
 
