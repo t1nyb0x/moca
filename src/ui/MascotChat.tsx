@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAppStore } from "@/app/store";
 
@@ -7,26 +7,24 @@ import { useAppStore } from "@/app/store";
  *
  * 別ウィンドウにはしない。Tauri のウィンドウは WebView ごと分かれ、状態を
  * 持つストアが割れるため (ADR-0016)。同じウィンドウの中で、モデルの隣に置く。
- *
- * 出すのは直近の返答だけとする。机の上に置くものなので、履歴を積むと場所を
- * 取りすぎる。さかのぼりたいときは通常表示へ戻ればよい。
  */
 export function MascotChat(): React.JSX.Element {
   const conversation = useAppStore((state) => state.conversation);
   const streamingText = useAppStore((state) => state.streamingText);
   const status = useAppStore((state) => state.status);
   const send = useAppStore((state) => state.send);
+  const cancel = useAppStore((state) => state.cancel);
   const setMascotChat = useAppStore((state) => state.setMascotChat);
 
   const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const streaming = status === "streaming";
   const messages = conversation?.messages ?? [];
-  // findLast は tsconfig の対象より新しいので、後ろから探す
-  const lastReply = [...messages]
-    .reverse()
-    .find((message) => message.role === "assistant");
-  const shown = streaming ? streamingText : (lastReply?.content ?? "");
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, streamingText]);
 
   const submit = (): void => {
     const value = input;
@@ -37,12 +35,25 @@ export function MascotChat(): React.JSX.Element {
 
   return (
     <aside className="mchat">
-      <div className="mchat__bubble">
-        {shown === "" ? (
-          <span className="mchat__placeholder">話しかけてみてください。</span>
-        ) : (
-          shown
+      <div className="mchat__log">
+        {messages.length === 0 && !streaming && (
+          <p className="mchat__placeholder">話しかけてみてください。</p>
         )}
+
+        {messages.map((message, index) => (
+          <p
+            key={`${message.createdAt}-${index}`}
+            className={`mchat__msg mchat__msg--${message.role}`}
+          >
+            {message.content}
+          </p>
+        ))}
+
+        {streaming && streamingText !== "" && (
+          <p className="mchat__msg mchat__msg--assistant">{streamingText}</p>
+        )}
+
+        <div ref={bottomRef} />
       </div>
 
       <div className="mchat__form">
@@ -52,15 +63,22 @@ export function MascotChat(): React.JSX.Element {
           placeholder="メッセージを入力"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
+            // 変換中の Enter は確定であって送信ではない
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               submit();
             }
           }}
         />
-        <button type="button" disabled={streaming} onClick={submit}>
-          送信
-        </button>
+        {streaming ? (
+          <button type="button" onClick={() => void cancel()}>
+            中断
+          </button>
+        ) : (
+          <button type="button" onClick={submit}>
+            送信
+          </button>
+        )}
       </div>
 
       <button
