@@ -826,6 +826,11 @@ textarea {
 */
 body.mascot {
   background: transparent;
+  /*
+    机の上に出す窓にスクロールバーは出せない。不透明な帯が浮いて見え、
+    透過そのものが台無しになる。溢れは切る。
+  */
+  overflow: hidden;
 }
 
 body.mascot .app__header,
@@ -841,6 +846,11 @@ body.mascot .vtool {
 */
 body.mascot .viewer {
   flex: 1;
+  /*
+    通常表示の最小幅 (18rem) を外す。倍率を下げると窓のほうが狭くなり、
+    器が窓からはみ出してスクロールバーが出る。
+  */
+  min-width: 0;
   border-right: none;
   background: transparent;
 }
