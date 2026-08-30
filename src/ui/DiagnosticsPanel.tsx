@@ -23,6 +23,7 @@ const IDLE_LABELS: { key: keyof IdleSettings; label: string }[] = [
   { key: "lookAt", label: "視線を向ける" },
   { key: "breath", label: "呼吸" },
   { key: "springBone", label: "髪の揺れ" },
+  { key: "motion", label: "体の動き" },
 ];
 
 const EMOTION_LABELS: Record<string, string> = {
