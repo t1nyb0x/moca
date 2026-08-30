@@ -21,7 +21,13 @@ const COMPONENT_CANDIDATES: Readonly<Record<CanonicalEmotion, readonly string[]>
   surprised: ["驚き", "びっくり", "surprised"],
 };
 
-/** 成分を持たない接続先向けの、抑揚と速さによる近似。 */
+/**
+ * 専用の成分が無いときの、抑揚と速さによる近似。
+ *
+ * **成分で表せている感情には掛けない。** 二重に効いて作り物めいた声になる。
+ * CeVIO は抑揚を 50 から動かすほど平板に聞こえるため、成分が当たっている
+ * かぎり触らないほうがよい。
+ */
 const PROSODY: Readonly<
   Record<CanonicalEmotion, Pick<VoiceStyle, "speed" | "pitch" | "intonation">>
 > = {
@@ -31,6 +37,13 @@ const PROSODY: Readonly<
   sad: { speed: 0.9, pitch: -0.3, intonation: 0.75 },
   relaxed: { speed: 0.95, pitch: -0.1, intonation: 0.85 },
   surprised: { speed: 1.1, pitch: 0.6, intonation: 1.4 },
+};
+
+/** 成分が当たったときは調整しない。 */
+const NO_PROSODY: Pick<VoiceStyle, "speed" | "pitch" | "intonation"> = {
+  speed: null,
+  pitch: null,
+  intonation: null,
 };
 
 /** 主となる成分の強さと、残りを埋める「普通」の強さ。 */
@@ -74,7 +87,9 @@ export function resolveDefaultPresets(
       components[neutralName] = 1;
     }
 
-    presets[emotion] = { speaker: null, components, ...PROSODY[emotion] };
+    // 成分で表せているなら抑揚は触らない (上の PROSODY の注釈)
+    const prosody = primary !== null ? NO_PROSODY : PROSODY[emotion];
+    presets[emotion] = { speaker: null, components, ...prosody };
   }
 
   return presets;
