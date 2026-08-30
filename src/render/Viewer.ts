@@ -100,6 +100,14 @@ export class Viewer {
   #breath: BreathState;
   /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
   #framing: FramingPreset | null = null;
+  /**
+   * 読み込みの世代。追い越しを捨てるために使う。
+   *
+   * `setModel` は読み込みのあいだ待つ。その間に次の指示が来ると、古いほうも
+   * 完了して場面へ足されてしまう。二体が重なり、表情の制御を受けるのは後から
+   * 代入された片方だけになるため、もう一体が既定の姿のまま残る。
+   */
+  #loadGeneration = 0;
   #refitOnResize = false;
   #expression: ExpressionState = createExpressionState();
   #lipSync: LipSyncState = createLipSyncState();
@@ -208,11 +216,20 @@ export class Viewer {
 
   /** 読み込み結果の診断。無音の失敗を検出できるようにする。 */
   async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
+    const generation = ++this.#loadGeneration;
     this.#clearModel();
     if (context === null) return null;
 
     const adapter =
       context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
+
+    // 待っているあいだに次の指示が来ていたら、出来たものは捨てる。
+    // 足すと場面に二体並び、片方が既定の姿のまま残る。
+    if (generation !== this.#loadGeneration) {
+      adapter.dispose();
+      return null;
+    }
+
     this.#adapter = adapter;
     this.#scene.add(adapter.object);
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
