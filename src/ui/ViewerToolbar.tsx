@@ -41,7 +41,14 @@ export function ViewerToolbar({
           <button
             key={preset}
             type="button"
-            onClick={() => viewer.current?.setFraming(preset)}
+            onClick={() => {
+              const instance = viewer.current;
+              if (instance === null) return;
+              instance.setFraming(preset);
+              // 構図の切り替えは OrbitControls を経由しないので、操作の
+              // 終わりが飛んでこない。ここで明示的に覚えさせる (F-03-5)。
+              void saveCameraState(instance.cameraState());
+            }}
           >
             {label}
           </button>

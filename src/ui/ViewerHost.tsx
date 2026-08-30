@@ -47,6 +47,26 @@ export function ViewerHost(): React.JSX.Element {
     viewer.setRefitOnResize(state.mascot);
     viewer.setInteractive(!state.mascot);
 
+    /**
+     * 通常表示のカメラを当てる。
+     *
+     * 覚えた位置があればそこへ、無ければ既定の構図へ。読み込み直後と、
+     * マスコット表示から戻ったときの両方で使う。
+     */
+    const applyNormalCamera = (): void => {
+      const current = useAppStore.getState();
+      const character = current.characters.find(
+        (item) => item.id === current.activeCharacterId,
+      );
+      if (character?.cameraPreset != null) {
+        viewer.applyCameraState(character.cameraPreset);
+      } else {
+        // 構築時の固定値のままだと、モデルの大きさによらず同じ距離になり、
+        // 寄りすぎた絵で始まる。
+        viewer.setFraming("upper");
+      }
+    };
+
     // カメラ位置を自動で覚える (要件 F-03-5)。手を離してから少し置くのは、
     // 回している最中の中間位置を書き込まないため。
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,15 +113,11 @@ export function ViewerHost(): React.JSX.Element {
           // モデルを読んだ直後に mascot を立てるが、この購読が張られるのは
           // React の効果が走ってからで、その頃には変化が済んでいる。読み込みの
           // 完了はこの購読より必ず後に来るので、ここが唯一確実な場所になる。
+          // マスコット表示では覚えた位置より全身を優先する (要件 F-13-2)
           if (useAppStore.getState().mascot) {
             viewer.setFraming("full");
-          } else if (character?.cameraPreset != null) {
-            // 覚えた位置があればそちらを優先する (要件 F-03-5)
-            viewer.applyCameraState(character.cameraPreset);
           } else {
-            // 覚えた位置が無いときの既定。構築時の固定値のままだと、モデルの
-            // 大きさによらず同じ距離になり、寄りすぎた絵で始まる。
-            viewer.setFraming("upper");
+            applyNormalCamera();
           }
 
           // 保存された割り当てがあれば反映する (PMX のみ)
@@ -183,6 +199,9 @@ export function ViewerHost(): React.JSX.Element {
           if (mascot) viewer.setFraming("full");
           viewer.setRefitOnResize(mascot);
           viewer.setInteractive(!mascot);
+          // 戻るときは全身のままにしない。マスコット表示の構図はあちらの
+          // 都合であって、利用者が通常表示のために覚えた位置ではない。
+          if (!mascot) applyNormalCamera();
         },
       ),
       store.subscribe(
