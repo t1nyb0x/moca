@@ -5,6 +5,7 @@
 //! モジュールに閉じ込め、呼び出し側は正規化感情だけを扱う。
 
 pub mod blend;
+pub mod cevio;
 pub mod error;
 pub mod http;
 pub mod shirataki;
