@@ -1,6 +1,6 @@
 //! 音声合成の共通表現。
 //!
-//! VOICEVOX と CeVIO (shirataki 経由) は感情の表し方が根本的に違う。
+//! VOICEVOX と CeVIO は感情の表し方が根本的に違う。
 //! 前者は話者ごとの「スタイル」の選択、後者は成分ごとの数値。両者を
 //! 呼び出し側から見て同じ形にするのがこの層の役目
 //! (docs/emotion-protocol.md 第 5 章)。
@@ -17,6 +17,8 @@ pub enum TtsKind {
     Voicevox,
     /// CeVIO AI を駆動する自作サーバー
     Shirataki,
+    /// CeVIO AI を COM で直に叩く。同じ機械の上にある場合だけ使える (ADR-0018)
+    Cevio,
 }
 
 impl TtsKind {
@@ -25,6 +27,7 @@ impl TtsKind {
         match self {
             Self::Voicevox => "VOICEVOX",
             Self::Shirataki => "shirataki",
+            Self::Cevio => "CeVIO AI",
         }
     }
 }
@@ -115,5 +118,6 @@ mod tests {
     fn 接続先の名前を出せる() {
         assert_eq!(TtsKind::Voicevox.display_name(), "VOICEVOX");
         assert_eq!(TtsKind::Shirataki.display_name(), "shirataki");
+        assert_eq!(TtsKind::Cevio.display_name(), "CeVIO AI");
     }
 }

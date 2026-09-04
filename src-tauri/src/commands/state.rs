@@ -19,8 +19,10 @@ use crate::storage::models::{
     CharacterProfile, Conversation, ConversationSummary, MessageRole, ProviderProfile, Settings,
 };
 use crate::storage::store::FileStore;
-use crate::tts::http::{HttpSynthesizer, SpeechSynthesizer};
+use crate::tts::cevio::CevioSynthesizer;
+use crate::tts::http::HttpSynthesizer;
 use crate::tts::types::{SpeakerInfo, SynthesizeRequest, TtsKind};
+use crate::tts::SpeechSynthesizer;
 
 use super::dto::{ChatStreamRequest, ProviderHealth, ProviderProfileDto};
 use super::error::CommandError;
@@ -202,8 +204,13 @@ impl AppState {
 
     // --- 音声合成 ---
 
-    fn synthesizer(kind: TtsKind, base_url: &str) -> Result<HttpSynthesizer> {
-        Ok(HttpSynthesizer::new(kind, base_url)?)
+    /// 繋ぎ方は種別で決まる。CeVIO を COM で直に叩く経路に待ち受け先は
+    /// 要らない (ADR-0018)。
+    fn synthesizer(kind: TtsKind, base_url: &str) -> Result<Box<dyn SpeechSynthesizer>> {
+        Ok(match kind {
+            TtsKind::Cevio => Box::new(CevioSynthesizer::new()),
+            _ => Box::new(HttpSynthesizer::new(kind, base_url)?),
+        })
     }
 
     pub async fn tts_speakers(&self, kind: TtsKind, base_url: &str) -> Result<Vec<SpeakerInfo>> {

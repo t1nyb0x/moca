@@ -6,6 +6,7 @@
 
 use serde_json::{json, Value};
 
+use super::cevio::{to_component, to_offset, to_scale};
 use super::types::{SpeakerInfo, SynthesizeRequest};
 
 /// 音声そのものを受け取るための指定。
@@ -13,17 +14,6 @@ use super::types::{SpeakerInfo, SynthesizeRequest};
 /// **省略すると JSON でファイルパスが返り、音声が得られない。** しかも
 /// サーバー側の一時ファイルが消えない。必ず指定する。
 const EXPORT_TYPE_STREAM: i64 = 1;
-
-/// CeVIO の各値は 0〜100 で 50 が普通。
-const NEUTRAL: f64 = 50.0;
-
-fn to_cevio_scale(value: f64) -> i64 {
-    (value * NEUTRAL).clamp(0.0, 100.0).round() as i64
-}
-
-fn to_cevio_offset(value: f64) -> i64 {
-    (NEUTRAL + value * NEUTRAL).clamp(0.0, 100.0).round() as i64
-}
 
 /// `POST /v1/voice/create` の本文を組み立てる。
 ///
@@ -39,13 +29,13 @@ pub fn build_create_body(request: &SynthesizeRequest, all_axes: &[String]) -> Va
 
     let mut voice_control = serde_json::Map::new();
     if let Some(speed) = preset.speed {
-        voice_control.insert("speed".to_owned(), json!(to_cevio_scale(speed)));
+        voice_control.insert("speed".to_owned(), json!(to_scale(speed)));
     }
     if let Some(pitch) = preset.pitch {
-        voice_control.insert("tone".to_owned(), json!(to_cevio_offset(pitch)));
+        voice_control.insert("tone".to_owned(), json!(to_offset(pitch)));
     }
     if let Some(intonation) = preset.intonation {
-        voice_control.insert("toneScale".to_owned(), json!(to_cevio_scale(intonation)));
+        voice_control.insert("toneScale".to_owned(), json!(to_scale(intonation)));
     }
 
     // 感情は名前と値の並びで渡す。連想配列ではない。
@@ -63,9 +53,7 @@ pub fn build_create_body(request: &SynthesizeRequest, all_axes: &[String]) -> Va
 
     let emotions: Vec<Value> = values
         .into_iter()
-        .map(|(name, value)| {
-            json!({ "name": name, "value": (value * 100.0).clamp(0.0, 100.0).round() as i64 })
-        })
+        .map(|(name, value)| json!({ "name": name, "value": to_component(value) }))
         .collect();
 
     let mut body = json!({
