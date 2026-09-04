@@ -150,11 +150,16 @@ DEBUG moca::commands: 設定の読み出し
 | 合成器 | 既定の待ち受け先 | 準備 |
 |---|---|---|
 | VOICEVOX | `http://127.0.0.1:50021` | VOICEVOX 本体を起動する |
-| CeVIO AI | `http://127.0.0.1:3000` | CeVIO AI 本体と [shirataki](https://github.com/t1nyb0x/shirataki) を起動する |
+| CeVIO AI (直接) | — | CeVIO AI 本体を起動する |
+| CeVIO AI (shirataki 経由) | `http://127.0.0.1:3000` | CeVIO AI 本体と [shirataki](https://github.com/t1nyb0x/shirataki) を起動する |
 
 設定の「キャラクター」から合成器と待ち受け先を選び、「接続を確かめる」で
 話者を取り込む。shirataki は環境変数 `PORT` で待ち受け先を変えられるので、
 既定から変えている場合はここも合わせる。
+
+**CeVIO には 2 通りの繋ぎ方がある。**「直接」は同じ機械に入っている CeVIO AI を
+COM で直に呼ぶので、ほかに何も起動しなくてよい。そのかわり別の PC の CeVIO は
+使えない。合成を別の PC に任せたい場合は shirataki 経由を選ぶ（[ADR-0018](docs/adr/0018-cevio-over-com.md)）。
 
 「感情の割り当てを作る」を押すと、話者が持つ感情成分の名前から既定の
 組み合わせを推測する。成分の顔ぶれはキャストごとに違うため、当たらない

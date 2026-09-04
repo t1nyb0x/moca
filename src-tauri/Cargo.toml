@@ -41,12 +41,8 @@ thiserror = "2"
 # 機密は Windows 資格情報マネージャーへ (要件 F-11-1)
 keyring = { version = "3", features = ["windows-native"] }
 
-# 実証: CeVIO AI を COM で直に叩く。shirataki を挟まずに済むか確かめる。
-windows = { version = "0.58", features = [
-  "Win32_System_Com",
-  "Win32_System_Ole",
-  "Win32_System_Variant",
-] }
+# CeVIO AI を COM で直に叩く (ADR-0018)。shirataki を挟まずに済ませる経路。
+windows = { version = "0.58", features = ["Win32_System_Com"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 

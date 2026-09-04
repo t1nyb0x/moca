@@ -2,6 +2,20 @@
 
 このファイルの書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に、版番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従う。
 
+## [未リリース]
+
+### 追加
+
+- **CeVIO AI へ COM で直に繋げるようにした。** 合成器の選択が VOICEVOX /
+  CeVIO AI (直接) / CeVIO AI (shirataki 経由) の 3 択になった。「直接」では
+  CeVIO AI 本体だけを起動しておけばよく、shirataki は要らない
+  （[ADR-0018](docs/adr/0018-cevio-over-com.md)）
+
+### 変更
+
+- CeVIO を別の PC で動かす場合は shirataki 経由を選ぶ。COM で叩けるのは同じ
+  機械の上に居る場合だけなので、shirataki 経由の経路はそのまま残している
+
 ## [0.7.0] - 2026-08-30
 
 止まって見えないようにした。待機中もわずかに動き、感情に応じて姿勢が変わる。
