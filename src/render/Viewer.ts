@@ -27,6 +27,12 @@ import {
   type IdleMotionState,
 } from "@/domain/motion/idle-motion";
 import {
+  advanceWeightShift,
+  createWeightShiftState,
+  evaluateWeightShift,
+  type WeightShiftState,
+} from "@/domain/motion/weight-shift";
+import {
   advanceEmotionMotion,
   createEmotionMotionState,
   evaluateEmotionMotion,
@@ -146,6 +152,8 @@ export class Viewer {
   #saccade: SaccadeState;
   #breath: BreathState;
   #idleMotion: IdleMotionState;
+  /** 体重移動 (要件 F-14-1)。待機の揺れと歩調を合わせる。 */
+  #weightShift: WeightShiftState;
   #emotionMotion: EmotionMotionState;
   /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
   #framing: FramingPreset | null = null;
@@ -246,6 +254,7 @@ export class Viewer {
     this.#saccade = createSaccadeState(seed + 1);
     this.#breath = createBreathState();
     this.#idleMotion = createIdleMotionState();
+    this.#weightShift = createWeightShiftState();
     this.#emotionMotion = createEmotionMotionState();
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
@@ -704,6 +713,11 @@ export class Viewer {
         delta,
         emotionMotion.tempo,
       );
+      this.#weightShift = advanceWeightShift(
+        this.#weightShift,
+        delta,
+        emotionMotion.tempo,
+      );
     }
     if (this.#idle.saccade) {
       this.#saccade = advanceSaccade(this.#saccade, delta);
@@ -755,6 +769,8 @@ export class Viewer {
     }
 
     if (this.#idle.motion) {
+      // 体重移動を先に置く。以降の層はこの上に重なる。
+      layers.push(evaluateWeightShift(this.#weightShift, emotionMotion.amplitude));
       layers.push(evaluateIdleMotion(this.#idleMotion, emotionMotion.amplitude));
       layers.push(emotionMotion.pose);
     }
