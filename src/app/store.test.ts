@@ -519,6 +519,9 @@ describe("診断", () => {
     boneNames: ["左腕", "右腕"],
     adjustedBones: ["左腕", "右腕"],
     rendererName: "ANGLE (NVIDIA)",
+    height: 1.55,
+    groundY: 0,
+    headY: 1.42,
   };
 
   it("モデルの素性を保持する", () => {

@@ -125,6 +125,19 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
           <dt>ボーン</dt>
           <dd>{diagnostics.boneNames.length} 本</dd>
 
+          <dt>背丈</dt>
+          <dd>
+            {diagnostics.height.toFixed(2)}（頭 {diagnostics.headY.toFixed(2)}）
+          </dd>
+
+          <dt>足元</dt>
+          <dd>
+            {diagnostics.groundY.toFixed(3)}
+            {Math.abs(diagnostics.groundY) > diagnostics.height * 0.02
+              ? "（原点が足元にありません。構図はこの値を床として合わせています）"
+              : "（原点が足元にあります）"}
+          </dd>
+
           <dt>描画</dt>
           <dd>
             {diagnostics.rendererName}

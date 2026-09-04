@@ -406,6 +406,9 @@ export class Viewer {
       emotionMorphs: adapter instanceof PmxAdapter ? adapter.emotionMorphs() : null,
       boneNames: adapter.boneNames(),
       adjustedBones: adapter.adjustedBones(),
+      height: adapter.height(),
+      groundY: adapter.bounds().minY,
+      headY: adapter.headWorldPosition(new THREE.Vector3()).y,
     };
   }
 
@@ -581,6 +584,9 @@ export class Viewer {
 
     const head = adapter.headWorldPosition(new THREE.Vector3());
     const height = adapter.height();
+    // **足元が y=0 にあるとは限らない。** 原点が腰にあるモデルもある。
+    // 0 を床と決め打ちすると、構図が上下にずれて宙に浮いて見える。
+    const ground = adapter.bounds().minY;
 
     // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
     // モデルの視線もそちらへ向いて表情が不自然になる。
@@ -593,14 +599,18 @@ export class Viewer {
         break;
       case "upper":
         this.#camera.position.set(0, head.y, height * 0.8);
-        this.#controls.target.set(0, head.y * 0.93, 0);
+        this.#controls.target.set(0, ground + (head.y - ground) * 0.93, 0);
         break;
       case "full":
         // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
         // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
         // 1.07h を確保し、上下におよそ 3% の余白を残す。
-        this.#camera.position.set(0, height * 0.55, height * FULL_DISTANCE_FACTOR);
-        this.#controls.target.set(0, height * 0.5, 0);
+        this.#camera.position.set(
+          0,
+          ground + height * 0.55,
+          height * FULL_DISTANCE_FACTOR,
+        );
+        this.#controls.target.set(0, ground + height * 0.5, 0);
         break;
     }
     this.#controls.update();

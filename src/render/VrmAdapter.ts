@@ -434,9 +434,14 @@ export class VrmAdapter implements ModelAdapter {
   }
 
   height(): number {
+    const { minY, maxY } = this.bounds();
+    const size = maxY - minY;
+    return size > 0 ? size : 1.5;
+  }
+
+  bounds(): { readonly minY: number; readonly maxY: number } {
     const box = new THREE.Box3().setFromObject(this.#vrm.scene);
-    const size = box.getSize(new THREE.Vector3());
-    return size.y > 0 ? size.y : 1.5;
+    return { minY: box.min.y, maxY: box.max.y };
   }
 
   dispose(): void {

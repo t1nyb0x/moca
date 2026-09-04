@@ -43,4 +43,15 @@ export type ModelDiagnostics = {
    * 何のエラーも出ないので、当たったかどうかを持ち回る。
    */
   readonly adjustedBones: readonly string[];
+  /** 外接箱の高さ。構図の基準になる。 */
+  readonly height: number;
+  /**
+   * 足元の高さ (ワールド座標)。
+   *
+   * **0 とは限らない。** 原点が腰にあるモデルもある。0 を床と決め打ちすると
+   * 構図が上下にずれ、宙に浮いて見える。ずれているかどうかを見るために持つ。
+   */
+  readonly groundY: number;
+  /** 頭の高さ。構図と視線の基準になる。 */
+  readonly headY: number;
 };

@@ -91,6 +91,14 @@ export interface ModelAdapter {
   /** モデル全体の高さ。 */
   height(): number;
 
+  /**
+   * モデルの上下の端 (ワールド座標)。
+   *
+   * **足元が y=0 にあるとは限らない。** 構図はこの値を基準に決める。
+   * 0 を床と決め打ちすると、原点が腰にあるモデルなどで宙に浮いて見える。
+   */
+  bounds(): { readonly minY: number; readonly maxY: number };
+
   /** モデルが持つボーン名。 */
   boneNames(): readonly string[];
 
