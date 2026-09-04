@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { armLoweringAngle, DEFAULT_ARM_DECLINATION_DEGREES } from "./rest-pose";
+import {
+  armLoweringAngle,
+  DEFAULT_ARM_DECLINATION_DEGREES,
+  FINGER_CURL_SCALE,
+  NATURAL_STANCE,
+  resolveDirection,
+} from "./rest-pose";
 
 const toDegrees = (radians: number): number => (radians * 180) / Math.PI;
 
@@ -49,5 +55,33 @@ describe("armLoweringAngle", () => {
       90 + DEFAULT_ARM_DECLINATION_DEGREES,
       6,
     );
+  });
+});
+
+describe("resolveDirection", () => {
+  it("狙いどおりに動いたなら試した向きを使う", () => {
+    expect(resolveDirection(1, true)).toBe(1);
+    expect(resolveDirection(-1, true)).toBe(-1);
+  });
+
+  it("逆に動いたなら向きを返す", () => {
+    // 軸の向きはモデルによって入れ替わる。決め打ちしない。
+    expect(resolveDirection(1, false)).toBe(-1);
+    expect(resolveDirection(-1, false)).toBe(1);
+  });
+});
+
+describe("NATURAL_STANCE", () => {
+  it("どの角度も姿勢の上限に収まる", () => {
+    // composePose の上限 0.3 を単独で超えると、待機の動きが乗る余地が無い
+    for (const value of Object.values(NATURAL_STANCE)) {
+      expect(Math.abs(value)).toBeLessThan(0.3);
+    }
+  });
+
+  it("指は付け根より第二関節を深く曲げる", () => {
+    // すべて同じ角度だと円弧になり、握った形にならない
+    expect(FINGER_CURL_SCALE.intermediate).toBeGreaterThan(FINGER_CURL_SCALE.proximal);
+    expect(FINGER_CURL_SCALE.distal).toBeLessThan(FINGER_CURL_SCALE.proximal);
   });
 });

@@ -8,16 +8,30 @@ import type { TtsKind } from "@/ipc/generated/TtsKind";
 import type { VoicePreset } from "@/ipc/generated/VoicePreset";
 import type { VoiceSettings } from "@/ipc/generated/VoiceSettings";
 
-/** 接続先ごとの既定の待ち受け先。どちらもローカルで動かす前提。 */
+const KINDS = ["voicevox", "shirataki", "cevio"] as const;
+
+/**
+ * 接続先ごとの既定の待ち受け先。
+ *
+ * CeVIO を直に叩く経路だけは待ち受け先を持たない。COM は同じ機械の上でしか
+ * 使えないため、繋ぎ先を選ぶ余地がない (ADR-0018)。
+ */
 const DEFAULT_BASE_URL: Readonly<Record<TtsKind, string>> = {
   voicevox: "http://127.0.0.1:50021",
   shirataki: "http://127.0.0.1:3000",
+  cevio: "",
 };
 
 const KIND_LABEL: Readonly<Record<TtsKind, string>> = {
   voicevox: "VOICEVOX",
-  shirataki: "CeVIO AI (shirataki)",
+  shirataki: "CeVIO AI (shirataki 経由)",
+  cevio: "CeVIO AI (直接)",
 };
+
+/** 待ち受け先を要するのは HTTP で繋ぐ合成器だけ。 */
+function needsBaseUrl(kind: TtsKind): boolean {
+  return kind !== "cevio";
+}
 
 const EMOTION_LABEL: Readonly<Record<CanonicalEmotion, string>> = {
   neutral: "平常",
@@ -150,7 +164,7 @@ export function VoiceSettingsForm({
             setAxes([]);
           }}
         >
-          {(["voicevox", "shirataki"] as const).map((kind) => (
+          {KINDS.map((kind) => (
             <option key={kind} value={kind}>
               {KIND_LABEL[kind]}
             </option>
@@ -158,13 +172,21 @@ export function VoiceSettingsForm({
         </select>
       </label>
 
-      <label>
-        待ち受け先
-        <input
-          value={value.baseUrl}
-          onChange={(event) => patch({ baseUrl: event.target.value })}
-        />
-      </label>
+      {needsBaseUrl(value.kind) ? (
+        <label>
+          待ち受け先
+          <input
+            value={value.baseUrl}
+            onChange={(event) => patch({ baseUrl: event.target.value })}
+          />
+        </label>
+      ) : (
+        <p className="form__note">
+          CeVIO AI 本体だけで動きます。shirataki を起動しておく必要はありません。
+          この機械に入っている CeVIO AI を直接呼ぶため、別の PC の CeVIO は
+          使えません。その場合は shirataki 経由を選んでください。
+        </p>
+      )}
 
       <div className="form__actions">
         <button type="button" disabled={busy} onClick={probe}>

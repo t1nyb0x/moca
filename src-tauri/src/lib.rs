@@ -73,6 +73,8 @@ pub fn run() {
             commands::api::chat_cancel,
             commands::model::model_pick,
             commands::model::model_open,
+            commands::motion::motion_pick,
+            commands::motion::motion_open,
             commands::api::logs_dir,
             commands::api::log_client_error,
             commands::api::tts_speakers,

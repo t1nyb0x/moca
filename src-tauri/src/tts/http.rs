@@ -1,7 +1,9 @@
 //! 音声合成の HTTP 層。
 //!
-//! VOICEVOX と shirataki はどちらもローカルの HTTP サーバーで、WAV を
-//! 返す。合成の手順だけが違うので、種別で切り替える 1 実装にまとめる。
+//! VOICEVOX と shirataki はどちらも HTTP サーバーで、WAV を返す。合成の
+//! 手順だけが違うので、種別で切り替える 1 実装にまとめる。
+//!
+//! CeVIO を COM で直に叩く経路はここを通らない (ADR-0018)。
 
 use std::time::Duration;
 
@@ -10,23 +12,11 @@ use serde_json::Value;
 
 use super::error::TtsError;
 use super::types::{SpeakerInfo, SynthesizeRequest, TtsKind};
+use super::SpeechSynthesizer;
 use super::{shirataki, voicevox};
 
 /// 合成には時間がかかるが、際限なく待つ理由も無い。
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
-
-#[async_trait]
-pub trait SpeechSynthesizer: Send + Sync {
-    async fn speakers(&self) -> Result<Vec<SpeakerInfo>, TtsError>;
-
-    /// 話者が持つ感情成分の名前。VOICEVOX には無いので空を返す。
-    async fn emotion_axes(&self, speaker: &str) -> Result<Vec<String>, TtsError>;
-
-    /// WAV のバイト列を返す。
-    async fn synthesize(&self, request: SynthesizeRequest) -> Result<Vec<u8>, TtsError>;
-
-    async fn health_check(&self) -> Result<(), TtsError>;
-}
 
 pub struct HttpSynthesizer {
     kind: TtsKind,
@@ -50,6 +40,13 @@ impl std::fmt::Debug for HttpSynthesizer {
 
 impl HttpSynthesizer {
     pub fn new(kind: TtsKind, base_url: impl Into<String>) -> Result<Self, TtsError> {
+        // COM で直に叩く CeVIO に HTTP の口は無い。ここへ来るのは呼び出し側の
+        // 取り違えなので、黙って shirataki として扱わずに断る。
+        if kind == TtsKind::Cevio {
+            tracing::error!(target: "moca::tts", "CeVIO を HTTP の合成器として作ろうとした");
+            return Err(TtsError::Protocol);
+        }
+
         let client = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()
@@ -89,7 +86,8 @@ impl SpeechSynthesizer for HttpSynthesizer {
     async fn speakers(&self) -> Result<Vec<SpeakerInfo>, TtsError> {
         let path = match self.kind {
             TtsKind::Voicevox => "speakers",
-            TtsKind::Shirataki => "v1/voice/casts",
+            // Cevio は new で弾いている
+            TtsKind::Shirataki | TtsKind::Cevio => "v1/voice/casts",
         };
         let response = self
             .client
@@ -105,7 +103,7 @@ impl SpeechSynthesizer for HttpSynthesizer {
 
         Ok(match self.kind {
             TtsKind::Voicevox => voicevox::speakers_from_json(&value),
-            TtsKind::Shirataki => shirataki::casts_from_json(&value),
+            TtsKind::Shirataki | TtsKind::Cevio => shirataki::casts_from_json(&value),
         })
     }
 
@@ -134,7 +132,7 @@ impl SpeechSynthesizer for HttpSynthesizer {
     async fn synthesize(&self, request: SynthesizeRequest) -> Result<Vec<u8>, TtsError> {
         let bytes = match self.kind {
             TtsKind::Voicevox => self.synthesize_voicevox(&request).await?,
-            TtsKind::Shirataki => self.synthesize_shirataki(&request).await?,
+            TtsKind::Shirataki | TtsKind::Cevio => self.synthesize_shirataki(&request).await?,
         };
 
         // 空の応答は成功に見えるが再生できない。ここで気づけるようにする。
@@ -465,6 +463,12 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error, TtsError::Protocol);
+    }
+
+    #[tokio::test]
+    async fn com_で叩く_cevio_は_http_の合成器にならない() {
+        // 取り違えて shirataki として扱うと、立っていないサーバーへ繋ぎに行く
+        assert!(HttpSynthesizer::new(TtsKind::Cevio, "http://127.0.0.1:3000").is_err());
     }
 
     #[tokio::test]

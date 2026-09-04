@@ -6,5 +6,6 @@ pub mod api;
 pub mod dto;
 pub mod error;
 pub mod model;
+pub mod motion;
 pub mod state;
 pub mod window;

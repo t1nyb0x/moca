@@ -265,6 +265,54 @@ describe("EmotionTagParser", () => {
     });
   });
 
+  describe("身振りのタグ", () => {
+    const gesture = (tag: string, intensity = 1): ParseEvent => ({
+      type: "gesture",
+      tag,
+      intensity,
+    });
+
+    it("割り当てられたタグを身振りとして拾う", () => {
+      const parser = new EmotionTagParser(["wave", "bow"]);
+      const events = normalize(parser.push("[wave]こんにちは"));
+      expect(events).toEqual([gesture("wave"), text("こんにちは")]);
+    });
+
+    it("強さを受け取る", () => {
+      const parser = new EmotionTagParser(["wave"]);
+      expect(normalize(parser.push("[wave:0.5]"))).toEqual([gesture("wave", 0.5)]);
+    });
+
+    it("知らないタグは本文として返す", () => {
+      // 本文中の [検索] のような角括弧まで消さないため
+      const parser = new EmotionTagParser(["wave"]);
+      expect(normalize(parser.push("[bow]やあ"))).toEqual([text("[bow]やあ")]);
+    });
+
+    it("割り当てが無ければ従来どおり感情だけを拾う", () => {
+      const parser = new EmotionTagParser();
+      expect(normalize(parser.push("[wave]やあ"))).toEqual([text("[wave]やあ")]);
+    });
+
+    it("感情と身振りが並んでも順に発行する", () => {
+      const parser = new EmotionTagParser(["wave"]);
+      const events = normalize(parser.push("[happy][wave]やあ"));
+      expect(events).toEqual([emotion("happy"), gesture("wave"), text("やあ")]);
+    });
+
+    it("チャンクをまたいでも解決する", () => {
+      const parser = new EmotionTagParser(["wave"]);
+      const events = normalize([...parser.push("[wa"), ...parser.push("ve]やあ")]);
+      expect(events).toEqual([gesture("wave"), text("やあ")]);
+    });
+
+    it("感情タグと同じ名前を渡しても感情が勝つ", () => {
+      // 画面では弾いているが、設定ファイルは手で書き換えられる
+      const parser = new EmotionTagParser(["happy"]);
+      expect(normalize(parser.push("[happy]"))).toEqual([emotion("happy")]);
+    });
+  });
+
   describe("状態管理", () => {
     it("flush は 2 回呼んでも重複して発行しない", () => {
       const parser = new EmotionTagParser();

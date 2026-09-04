@@ -119,6 +119,56 @@ describe("ResponseAssembler", () => {
     expect(message.emotions).toBeNull();
   });
 
+  it("割り当てた身振りのタグを拾う", () => {
+    const assembler = new ResponseAssembler(["wave"]);
+    const update = assembler.push("[wave]こんにちは");
+    expect(update.gestures).toEqual([{ tag: "wave", intensity: 1 }]);
+    expect(update.appendedText).toBe("こんにちは");
+  });
+
+  it("身振りのタグは本文にも原文の外にも残さない", () => {
+    const assembler = new ResponseAssembler(["wave"]);
+    assembler.push("[wave]やあ");
+    expect(assembler.display).toBe("やあ");
+    // 原文はタグを含んだまま残す。再開時に同じ動きを復元できるようにする。
+    expect(assembler.raw).toBe("[wave]やあ");
+  });
+
+  it("同じ身振りが続いても間引かない", () => {
+    // 二度うなずくのと一度うなずくのは違う
+    const assembler = new ResponseAssembler(["nod"]);
+    const update = assembler.push("[nod][nod]はい");
+    expect(update.gestures).toHaveLength(2);
+  });
+
+  it("強さを持ち回る", () => {
+    const assembler = new ResponseAssembler(["wave"]);
+    expect(assembler.push("[wave:0.4]やあ").gestures).toEqual([
+      { tag: "wave", intensity: 0.4 },
+    ]);
+  });
+
+  it("割り当てていないタグは本文として残す", () => {
+    const assembler = new ResponseAssembler(["wave"]);
+    const update = assembler.push("[bow]やあ");
+    expect(update.gestures).toEqual([]);
+    expect(assembler.display).toBe("[bow]やあ");
+  });
+
+  it("身振りを渡さなければ従来どおり動く", () => {
+    const assembler = new ResponseAssembler();
+    const update = assembler.push("[happy]やあ");
+    expect(update.gestures).toEqual([]);
+    expect(update.emotion).toEqual({ emotion: "happy", intensity: 1 });
+  });
+
+  it("感情と身振りを同じ差分で受け取れる", () => {
+    const assembler = new ResponseAssembler(["wave"]);
+    const update = assembler.push("[happy][wave]やあ");
+    expect(update.emotion).toEqual({ emotion: "happy", intensity: 1 });
+    expect(update.gestures).toEqual([{ tag: "wave", intensity: 1 }]);
+  });
+
   it("空の応答も壊れない", () => {
     const assembler = feed([]);
     expect(assembler.display).toBe("");
