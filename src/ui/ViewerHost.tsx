@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useAppStore } from "@/app/store";
+import { useAppStore, type GestureSource } from "@/app/store";
 import { isSoftwareRenderer } from "@/domain/model/renderer";
 import { toAssetUrl, windowCursorPosition, windowSetClickThrough } from "@/ipc";
 import { Viewer } from "@/render/Viewer";
@@ -164,6 +164,49 @@ export function ViewerHost(): React.JSX.Element {
     };
     const character = state.characters.find((item) => item.id === state.activeCharacterId);
     if (character !== undefined) viewer.setIdleSettings(character.idleSettings);
+    /**
+     * 身振りの登録が終わるまでの待ち合わせ。
+     *
+     * 割り当てを差し替えた直後に「試す」を押すと、登録より先に再生の指示が
+     * 届く。読み込みは非同期なので、そのままでは何も起きない。
+     */
+    let gesturesReady: Promise<unknown> = Promise.resolve();
+
+    /**
+     * 身振りを載せ終えたときの報告を診断へ渡す。
+     *
+     * **モデルの読み込みと割り当ての差し替えは、どちらが先に来るか決まらない。**
+     * 割り当てを先に載せに行くとモデルがまだ無く、その後モデルを読んだ時点で
+     * 改めて載る。両方の結末をここで受ける (要件 F-15-11)。
+     */
+    viewer.onGesturesLoaded = (result) => {
+      const failed = new Set(result.failed);
+      const store = useAppStore.getState();
+      store.setGestureReport(
+        store.gestures.map((gesture) => ({
+          tag: gesture.tag,
+          name: gesture.name,
+          loaded: result.pending ? null : !failed.has(gesture.tag),
+        })),
+      );
+
+      if (result.failed.length === 0) return;
+      setWarning(
+        `身振り ${result.failed.join("、")} を読み込めませんでした。` +
+          "ファイルが移動または削除されていないか確認してください。",
+      );
+    };
+
+    /** 割り当てを 3D ビューへ載せる。結果は onGesturesLoaded が受ける。 */
+    const applyGestures = (gestures: readonly GestureSource[]): void => {
+      gesturesReady = viewer.setGestures(
+        gestures.map((gesture) => ({
+          tag: gesture.tag,
+          url: toAssetUrl(gesture.path),
+        })),
+      );
+    };
+
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */
     const load = (handle: { path: string; format: "vrm" | "pmx" } | null): void => {
       setFailure(null);
@@ -241,6 +284,8 @@ export function ViewerHost(): React.JSX.Element {
     };
 
     if (state.model !== null) load(state.model);
+    // 起動時の読み込みが購読より先に済んでいることがある。現在の値を一度当てる。
+    if (state.gestures.length > 0) applyGestures(state.gestures);
 
     const unsubscribe = [
       store.subscribe(
@@ -250,7 +295,7 @@ export function ViewerHost(): React.JSX.Element {
       // 会話中の感情は発話と一緒に渡し、口が到達した時点で反映させる
       store.subscribe(
         (current) => current.speech,
-        (speech) => viewer.feedSpeech(speech.text, speech.emotion),
+        (speech) => viewer.feedSpeech(speech.text, speech.emotion, speech.gestures),
       ),
       // 読み上げ音声があるあいだは、実際の波形に合わせて口を動かす
       store.subscribe(
@@ -260,13 +305,33 @@ export function ViewerHost(): React.JSX.Element {
             viewer.endAudioSpeech();
             return;
           }
-          viewer.speakAudio(audio.segment.text, audio.segment.cue, audio.playback.sample);
+          viewer.speakAudio(
+            audio.segment.text,
+            audio.segment.cue,
+            audio.segment.gestures,
+            audio.playback.sample,
+          );
         },
       ),
       // 手動の確認は即座に反映する
       store.subscribe(
         (current) => current.preview,
         (preview) => viewer.setEmotion(preview.emotion),
+      ),
+      // 身振りの割り当て (要件 F-15)。モデルの読み込みとは独立に差し替わる。
+      store.subscribe(
+        (current) => current.gestures,
+        (gestures) => applyGestures(gestures),
+      ),
+      // 待たずに始める身振り。手動の確認と、本文が続かない末尾のタグ。
+      store.subscribe(
+        (current) => current.gesturePlay,
+        (play) => {
+          // 登録が済んでから動かす。差し替えた直後でも取りこぼさない。
+          void gesturesReady.then(() => {
+            for (const cue of play.cues) viewer.playGesture(cue.tag, cue.intensity);
+          });
+        },
       ),
       store.subscribe(
         (current) => current.settings?.lipSyncCharsPerSecond ?? 10,

@@ -323,8 +323,19 @@ impl AppState {
             .collect();
         messages.push(ChatMessage::user(request.user_input.clone()));
 
+        // 身振りのタグはキャラクターごとに違う。割り当てたものだけを教える。
+        let gesture_tags: Vec<String> = character
+            .gestures
+            .iter()
+            .map(|gesture| gesture.tag.clone())
+            .collect();
+
         ChatRequest {
-            system: build_system_prompt(&character.system_prompt, provider.emotion_mode),
+            system: build_system_prompt(
+                &character.system_prompt,
+                provider.emotion_mode,
+                &gesture_tags,
+            ),
             messages,
             model: provider.model.clone(),
             max_tokens: provider.max_tokens,
@@ -417,6 +428,7 @@ mod tests {
             idle_settings: IdleSettings::default(),
             emotion_mapping: None,
             voice_settings: None,
+            gestures: Vec::new(),
             schema_version: SCHEMA_VERSION,
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),

@@ -138,10 +138,18 @@ type CharacterProfile = {
   cameraPreset: CameraState | null;
   idleSettings: IdleSettings;
   emotionMapping: EmotionMapping | null;  // VRM は通常 null
-  voiceSettings: null;                    // P2 まで常に null
+  voiceSettings: VoiceSettings | null;    // 0.4 で追加。null は音声を使わない
+  gestures: GestureBinding[];             // 0.8 で追加。空なら身振りを使わない
   schemaVersion: number;
   createdAt: string;                      // RFC3339
   updatedAt: string;
+};
+
+/** 身振りの割り当て（要件 F-15、ADR-0019）。 */
+type GestureBinding = {
+  tag: string;    // 返答に書かせるタグ名。英小文字のみ
+  path: string;   // VRMA の絶対パス
+  name: string;   // 画面に出す名前
 };
 
 type CameraState = { position: [number, number, number]; target: [number, number, number] };
@@ -221,6 +229,26 @@ type ModelHandle = {
 2. ファイルが存在し読み取れること
 3. サイズが閾値以下であること（超過時は `oversized: true` を立てるが、失敗にはしない）
 4. **P0 では `.pmx` は `invalid` エラーを返す**（要件 F-01-7。無言で失敗させない）
+
+#### 身振りのモーション（要件 F-15）
+
+| コマンド | 引数 | 戻り値 |
+|---|---|---|
+| `motion_pick` | — | `MotionHandle \| null` |
+| `motion_open` | `path: string` | `MotionHandle` |
+
+```ts
+type MotionHandle = {
+  path: string;          // 絶対パス。フロントが convertFileSrc に渡す
+  name: string;          // 画面に出す名前。拡張子を除いたファイル名
+};
+```
+
+モデルと同じ考え方に立つ。中身は IPC を運ばず、パスをスコープへ登録して WebView が直接読む。扱うのは `.vrma` のみとする（[ADR-0019](adr/0019-gestures-from-user-vrma.md)）。
+
+VRMA は 1 ファイルで完結するので、許可するのはそのファイルだけでよい。PMX のようにディレクトリを開ける必要が無い。
+
+`motion_open` は保存済みのパスを開き直すために使う。**アセットプロトコルの許可はプロセスごとに消える**ので、読ませる前に毎回通す（C-3）。
 
 ### 2.6 チャット
 

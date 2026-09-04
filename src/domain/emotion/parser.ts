@@ -18,22 +18,27 @@ const TAG_BODY_CHAR = /^[a-z0-9:.]$/;
  */
 const TAG_PATTERN = /^\[([a-z]+)(?::(\d(?:\.\d+)?))?\]$/;
 
-function parseTag(raw: string): ParseEvent | null {
+/**
+ * @param gestures 利用者が割り当てた身振りのタグ名。知らない名前は本文へ返す。
+ */
+function parseTag(raw: string, gestures: ReadonlySet<string>): ParseEvent | null {
   const matched = TAG_PATTERN.exec(raw);
   if (matched === null) return null;
 
   const name = matched[1];
-  if (name === undefined || !isCanonicalEmotion(name)) return null;
+  if (name === undefined) return null;
 
   const rawIntensity = matched[2];
-  if (rawIntensity === undefined) {
-    return { type: "emotion", emotion: name, intensity: 1.0 };
+  let intensity = 1.0;
+  if (rawIntensity !== undefined) {
+    intensity = Number(rawIntensity);
+    if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) return null;
   }
 
-  const intensity = Number(rawIntensity);
-  if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) return null;
-
-  return { type: "emotion", emotion: name, intensity };
+  // 感情が先。身振りのタグ名は感情と衝突しないよう画面で弾いている。
+  if (isCanonicalEmotion(name)) return { type: "emotion", emotion: name, intensity };
+  if (gestures.has(name)) return { type: "gesture", tag: name, intensity };
+  return null;
 }
 
 /**
@@ -45,11 +50,22 @@ function parseTag(raw: string): ParseEvent | null {
  * 設計原則: **本文を絶対に失わない。** 感情が取れないことは許容するが、
  * ユーザーが読むべきテキストが消えることは許容しない。
  *
+ * 身振りのタグ (要件 F-15) も同じ文法で拾う。ただし顔ぶれは利用者が決める
+ * ので、知っている名前を渡された分だけ解決する。**渡されていない名前は
+ * 従来どおり本文として返す。** 割り当ての無いタグを黙って捨てると、本文中の
+ * `[検索]` のような角括弧まで消えてしまうため。
+ *
  * 仕様: docs/emotion-protocol.md 第 3 章
  */
 export class EmotionTagParser {
   /** 空文字なら TEXT 状態。非空なら BUFFERING 状態で、必ず `[` から始まる。 */
   #buffer = "";
+  /** 解決できる身振りのタグ名。 */
+  readonly #gestures: ReadonlySet<string>;
+
+  constructor(gestures: readonly string[] = []) {
+    this.#gestures = new Set(gestures);
+  }
 
   push(chunk: string): ParseEvent[] {
     const events: ParseEvent[] = [];
@@ -74,7 +90,7 @@ export class EmotionTagParser {
       }
 
       if (char === "]") {
-        const parsed = parseTag(this.#buffer + char);
+        const parsed = parseTag(this.#buffer + char, this.#gestures);
         if (parsed === null) {
           pending += this.#buffer + char;
         } else {

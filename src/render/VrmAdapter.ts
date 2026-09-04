@@ -1,8 +1,18 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
+import {
+  createVRMAnimationHumanoidTracks,
+  VRMAnimationLoaderPlugin,
+  type VRMAnimation,
+} from "@pixiv/three-vrm-animation";
 
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
+import {
+  FINGER_CURL_SCALE,
+  NATURAL_STANCE,
+  resolveDirection,
+} from "@/domain/model/rest-pose";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
 import type { PoseMap } from "@/domain/motion/pose";
 import type { WeightMap } from "@/domain/motion/types";
@@ -25,6 +35,12 @@ const POSED_BONES = [
   "rightShoulder",
   "leftUpperArm",
   "rightUpperArm",
+  // 体重移動で使う。腰を傾けたぶんを股関節で打ち消すため、脚が要る
+  // (domain/motion/weight-shift.ts)。
+  "leftUpperLeg",
+  "rightUpperLeg",
+  "leftLowerLeg",
+  "rightLowerLeg",
 ] as const;
 
 /**
@@ -43,8 +59,6 @@ const EMOTION_SUBSTITUTES: Readonly<
 
 /** 腕を下ろす角度。T ポーズから自然な立ち姿へ。 */
 const RELAXED_UPPER_ARM_RADIANS = 1.2;
-/** 肘のわずかな曲げ。まっすぐだと棒のように見える。 */
-const RELAXED_LOWER_ARM_RADIANS = 0.14;
 
 /**
  * 片腕を下ろす。
@@ -58,9 +72,9 @@ function relaxArm(
   upperName: "leftUpperArm" | "rightUpperArm",
   lowerName: "leftLowerArm" | "rightLowerArm",
   handName: "leftHand" | "rightHand",
-): void {
+): number {
   const upper = vrm.humanoid.getNormalizedBoneNode(upperName);
-  if (upper === null) return;
+  if (upper === null) return 0;
   const probe = vrm.humanoid.getNormalizedBoneNode(handName) ?? upper;
 
   const shoulder = new THREE.Vector3();
@@ -72,8 +86,8 @@ function relaxArm(
 
   const armLength = shoulder.distanceTo(hand);
   if (armLength > 0 && shoulder.y - hand.y > armLength * 0.3) {
-    // すでに下がっている。触らない。
-    return;
+    // すでに下がっている。触らない。肩や崩しに使う向きだけ返す。
+    return Math.sign(upper.rotation.z) || (upperName === "leftUpperArm" ? 1 : -1);
   }
 
   const before = hand.y;
@@ -87,23 +101,168 @@ function relaxArm(
     vrm.scene.updateMatrixWorld(true);
   }
 
+  const sign = Math.sign(upper.rotation.z);
   const lower = vrm.humanoid.getNormalizedBoneNode(lowerName);
-  if (lower !== null) {
-    lower.rotation.z = Math.sign(upper.rotation.z) * RELAXED_LOWER_ARM_RADIANS;
+  if (lower !== null) lower.rotation.z = sign * NATURAL_STANCE.elbowRadians;
+  return sign;
+}
+
+type Side = "left" | "right";
+
+/** 指の並びと関節。VRM 1.0 の正規化された名前に従う。 */
+const FINGERS = ["Index", "Middle", "Ring", "Little"] as const;
+const FINGER_JOINTS = [
+  ["Proximal", FINGER_CURL_SCALE.proximal],
+  ["Intermediate", FINGER_CURL_SCALE.intermediate],
+  ["Distal", FINGER_CURL_SCALE.distal],
+] as const;
+
+function boneOf(vrm: VRM, name: string): THREE.Object3D | null {
+  // 正規化された人型ボーンは名前が仕様で決まっている。持たないモデルもある。
+  return vrm.humanoid.getNormalizedBoneNode(name as never);
+}
+
+/**
+ * 手のひらが向いている方向。指を曲げる先になる。
+ *
+ * 人差し指と小指の付け根、そして手首を結ぶ面が手のひらの面である。その法線を
+ * 外積で得る。**左右で指の並びが鏡になる**ので、外積の向きも入れ替わる。
+ */
+function palmNormal(vrm: VRM, side: Side): THREE.Vector3 | null {
+  const hand = boneOf(vrm, `${side}Hand`);
+  const index = boneOf(vrm, `${side}IndexProximal`);
+  const little = boneOf(vrm, `${side}LittleProximal`);
+  if (hand === null || index === null || little === null) return null;
+
+  vrm.scene.updateMatrixWorld(true);
+  const wrist = hand.getWorldPosition(new THREE.Vector3());
+  const indexAt = index.getWorldPosition(new THREE.Vector3());
+  const littleAt = little.getWorldPosition(new THREE.Vector3());
+
+  const along = indexAt.clone().sub(wrist);
+  const across = littleAt.sub(indexAt);
+  const normal = new THREE.Vector3().crossVectors(along, across);
+  if (normal.lengthSq() === 0) return null;
+
+  normal.normalize();
+  return side === "left" ? normal.negate() : normal;
+}
+
+/**
+ * 指を軽く握る。
+ *
+ * **A ポーズに見える最大の原因はここである。** まっすぐ開いた指は人がとらない
+ * 形で、腕の角度をいくら整えても人形に見える。
+ *
+ * 曲げる向きは手のひらを測って決める。軸の向きはモデルによって入れ替わる
+ * ことがあり、決め打ちすると指が甲側へ反る。
+ *
+ * **親指は触らない。** 親指だけは他の指と回る軸が違い、モデルごとの差も
+ * 大きい。外すと開いたままだが、反るよりはよい。
+ *
+ * @returns 実際に使った向き。手首を曲げる向きと揃えるために返す。
+ */
+function curlFingers(vrm: VRM, side: Side): number {
+  // 正規化された座標系から導いた既定。左手は −Z、右手は +Z で手のひら側へ。
+  const probe = side === "left" ? -1 : 1;
+  const curl = NATURAL_STANCE.fingerCurlRadians;
+
+  const first = boneOf(vrm, `${side}IndexProximal`);
+  const tip =
+    boneOf(vrm, `${side}IndexDistal`) ?? boneOf(vrm, `${side}IndexIntermediate`);
+  const palm = palmNormal(vrm, side);
+
+  let sign = probe;
+  if (first !== null && tip !== null && palm !== null) {
+    vrm.scene.updateMatrixWorld(true);
+    const before = tip.getWorldPosition(new THREE.Vector3());
+    first.rotation.z = probe * curl;
+    vrm.scene.updateMatrixWorld(true);
+    const after = tip.getWorldPosition(new THREE.Vector3());
+    first.rotation.z = 0;
+
+    sign = resolveDirection(probe, after.sub(before).dot(palm) > 0);
   }
+
+  for (const finger of FINGERS) {
+    for (const [joint, scale] of FINGER_JOINTS) {
+      const node = boneOf(vrm, `${side}${finger}${joint}`);
+      if (node === null) continue;
+      node.rotation.z = sign * curl * scale;
+    }
+  }
+  return sign;
 }
 
 /**
  * 立ち姿を整える。
  *
- * T ポーズのままだと人形にしか見えない。モーションデータを持たない MVP
- * では、初期姿勢を作り変えることが「生きている感」の前提になる
- * (ADR-0005 の補足)。
+ * T ポーズのままだと人形にしか見えない。モーションデータを持たない構成では、
+ * 初期姿勢を作り変えることが「生きている感」の前提になる (ADR-0005 の補足)。
+ *
+ * **左右をわずかに崩す。** 腕を下ろしただけの姿勢が人形に見えるもう一つの
+ * 理由は、左右が寸分違わず同じであることにある。人は片側に重心を預けて
+ * 立っており、完全対称にはならない。
  */
 export function applyRelaxedPose(vrm: VRM): void {
-  relaxArm(vrm, "leftUpperArm", "leftLowerArm", "leftHand");
-  relaxArm(vrm, "rightUpperArm", "rightLowerArm", "rightHand");
+  const leftArm = relaxArm(vrm, "leftUpperArm", "leftLowerArm", "leftHand");
+  const rightArm = relaxArm(vrm, "rightUpperArm", "rightLowerArm", "rightHand");
+
+  for (const side of ["left", "right"] as const) {
+    const curl = curlFingers(vrm, side);
+
+    // 手首を手のひら側へわずかに折る。甲が正面を向いたままだと硬い。
+    const hand = boneOf(vrm, `${side}Hand`);
+    if (hand !== null) hand.rotation.z = curl * NATURAL_STANCE.wristRadians;
+
+    // 肩を落とす。いからせない。腕を下ろした向きと同じ側へ倒す。
+    const shoulder = boneOf(vrm, `${side}Shoulder`);
+    const armSign = side === "left" ? leftArm : rightArm;
+    if (shoulder !== null && armSign !== 0) {
+      shoulder.rotation.z = armSign * NATURAL_STANCE.shoulderDropRadians;
+    }
+
+    // つま先をわずかに外へ開く。真正面に揃うと気をつけの姿勢に見える。
+    const leg = boneOf(vrm, `${side}UpperLeg`);
+    if (leg !== null) {
+      leg.rotation.y =
+        (side === "left" ? 1 : -1) * NATURAL_STANCE.toeOutRadians;
+    }
+  }
+
+  // 左右の崩し。右腕だけをわずかに深く下ろす。
+  const right = boneOf(vrm, "rightUpperArm");
+  if (right !== null && rightArm !== 0) {
+    right.rotation.z += rightArm * NATURAL_STANCE.asymmetryRadians;
+  }
+
   vrm.humanoid.update();
+}
+
+/** 身振りの立ち上がりと終わりを馴染ませる時間 (秒)。 */
+const GESTURE_FADE_SECONDS = 0.2;
+
+/**
+ * VRMA から体の動きだけを取り出す (要件 F-15)。
+ *
+ * **表情と視線は使わない。** クリップに任せると、読み上げ中のリップシンクや
+ * 感情の表情を上書きしてしまう。moca の芯は「返答に応じて表情が変わる」こと
+ * なので、そこはこちらが持ち続ける (ADR-0019)。
+ *
+ * **腰の移動も使わない。** マスコット表示ではモデルの外接箱に合わせて窓を
+ * 詰めており、動いているあいだに位置が変わると枠から出る (要件 F-13)。
+ */
+function createBodyClip(
+  animation: VRMAnimation,
+  vrm: VRM,
+  name: string,
+): THREE.AnimationClip {
+  const { rotation } = createVRMAnimationHumanoidTracks(
+    animation,
+    vrm.humanoid,
+    vrm.meta.metaVersion,
+  );
+  return new THREE.AnimationClip(name, undefined, [...rotation.values()]);
 }
 
 /** 書き込みを試みる表情名。ここに無いキーは無視する。 */
@@ -160,8 +319,18 @@ export class VrmAdapter implements ModelAdapter {
     readonly { name: string; scale: number }[]
   >;
 
+  /** 身振りの再生器 (要件 F-15)。 */
+  readonly #mixer: THREE.AnimationMixer;
+  readonly #clips = new Map<string, THREE.AnimationClip>();
+  /** 再生中の身振り。一度に動くのは一つだけ。 */
+  #action: THREE.AnimationAction | null = null;
+  /** 終わりを馴染ませ終えるまでの残り時間。null なら馴染ませ中でない。 */
+  #fadeOutLeft: number | null = null;
+
   constructor(vrm: VRM) {
     this.#vrm = vrm;
+    this.#mixer = new THREE.AnimationMixer(vrm.scene);
+    this.#mixer.addEventListener("finished", this.#onGestureFinished);
     this.textureCount = countTexturedMaterials(vrm.scene);
     this.#available = new Set(
       vrm.expressionManager?.expressions.map(
@@ -267,7 +436,104 @@ export class VrmAdapter implements ModelAdapter {
     this.#posedLast = applied;
   }
 
+  /**
+   * VRMA を読み、身振りとして登録する (要件 F-15)。
+   *
+   * VRMA も glTF なので、モデルと同じ経路で読める。中身は IPC を通らない
+   * (docs/ipc-contract.md 2.5)。
+   */
+  async registerGesture(tag: string, url: string): Promise<boolean> {
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+
+    const gltf = await loader.loadAsync(url);
+    const animations = gltf.userData.vrmAnimations as VRMAnimation[] | undefined;
+    const animation = animations?.[0];
+    if (animation === undefined) return false;
+
+    const clip = createBodyClip(animation, this.#vrm, tag);
+    // 体を動かすものが無いなら、登録しても何も起きない
+    if (clip.tracks.length === 0) return false;
+
+    this.#forget(tag);
+    this.#clips.set(tag, clip);
+    return true;
+  }
+
+  /**
+   * 身振りを始める。
+   *
+   * `intensity` はそのまま重みにする。1 未満なら基準の姿勢との中間になり、
+   * 動きが小さくなる。0 では何も起きないので始めない。
+   */
+  playGesture(tag: string, intensity: number): boolean {
+    const clip = this.#clips.get(tag);
+    if (clip === undefined) return false;
+
+    const weight = Math.min(1, Math.max(0, intensity));
+    if (weight <= 0) return false;
+
+    // 前の身振りは畳んでから始める。重ねると腕が二重に振れる。
+    this.#stopGesture();
+
+    const action = this.#mixer.clipAction(clip);
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    // 終わりは自分で馴染ませる。切ると最後の姿勢から基準へ飛ぶ。
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(weight);
+    action.fadeIn(GESTURE_FADE_SECONDS);
+    action.play();
+
+    this.#action = action;
+    this.#fadeOutLeft = null;
+    return true;
+  }
+
+  clearGestures(): void {
+    this.#stopGesture();
+    for (const tag of [...this.#clips.keys()]) this.#forget(tag);
+  }
+
+  /** 再生を終え、ボーンを基準へ戻す。 */
+  #stopGesture(): void {
+    this.#action?.stop();
+    this.#action = null;
+    this.#fadeOutLeft = null;
+  }
+
+  #forget(tag: string): void {
+    const clip = this.#clips.get(tag);
+    if (clip === undefined) return;
+    this.#mixer.uncacheClip(clip);
+    this.#clips.delete(tag);
+  }
+
+  /**
+   * 最後まで再生し終えた。最後の姿勢から基準へ馴染ませる。
+   *
+   * ここで止めきらないと、クリップの最終フレームがボーンに残り続け、
+   * 待機の動きへ戻れなくなる。
+   */
+  #onGestureFinished = (): void => {
+    if (this.#action === null) return;
+    this.#action.fadeOut(GESTURE_FADE_SECONDS);
+    this.#fadeOutLeft = GESTURE_FADE_SECONDS;
+  };
+
+  /**
+   * **姿勢の書き込みより後に回す。** `applyPose` は基準からの差を絶対値で
+   * 書くので、先に走らせるとクリップを消してしまう。この順なら、クリップが
+   * 動かすボーンはクリップが持ち、触らないボーンには呼吸や待機が残る。
+   */
   update(deltaSeconds: number): void {
+    if (this.#action !== null) {
+      this.#mixer.update(deltaSeconds);
+      if (this.#fadeOutLeft !== null) {
+        this.#fadeOutLeft -= deltaSeconds;
+        if (this.#fadeOutLeft <= 0) this.#stopGesture();
+      }
+    }
     this.#vrm.update(deltaSeconds);
   }
 
@@ -296,12 +562,19 @@ export class VrmAdapter implements ModelAdapter {
   }
 
   height(): number {
+    const { minY, maxY } = this.bounds();
+    const size = maxY - minY;
+    return size > 0 ? size : 1.5;
+  }
+
+  bounds(): { readonly minY: number; readonly maxY: number } {
     const box = new THREE.Box3().setFromObject(this.#vrm.scene);
-    const size = box.getSize(new THREE.Vector3());
-    return size.y > 0 ? size.y : 1.5;
+    return { minY: box.min.y, maxY: box.max.y };
   }
 
   dispose(): void {
+    this.#mixer.removeEventListener("finished", this.#onGestureFinished);
+    this.clearGestures();
     VRMUtils.deepDispose(this.#vrm.scene);
   }
 }

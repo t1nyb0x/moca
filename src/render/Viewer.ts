@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import type { CanonicalEmotion, EmotionCue } from "@/domain/emotion/types";
+import type {
+  CanonicalEmotion,
+  EmotionCue,
+  GestureCue,
+} from "@/domain/emotion/types";
 import type { MorphTarget } from "@/domain/model/pmx-mapping";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
@@ -22,6 +26,12 @@ import {
   evaluateIdleMotion,
   type IdleMotionState,
 } from "@/domain/motion/idle-motion";
+import {
+  advanceWeightShift,
+  createWeightShiftState,
+  evaluateWeightShift,
+  type WeightShiftState,
+} from "@/domain/motion/weight-shift";
 import {
   advanceEmotionMotion,
   createEmotionMotionState,
@@ -94,6 +104,25 @@ const DEFAULT_IDLE: IdleSettings = {
  * 受けない。毎フレームの値を React state に置くと 60fps で再レンダリングが
  * 走る。
  */
+/** 身振りの割り当て。URL はアセットプロトコル経由のもの。 */
+export type GestureSource = {
+  readonly tag: string;
+  readonly url: string;
+};
+
+/**
+ * 身振りを載せた結果。
+ *
+ * 読めたかどうかは何のエラーも出さずに分かれる。診断へ出せるよう、タグごとの
+ * 結果として返す (要件 F-15-10)。
+ */
+export type GestureLoadResult = {
+  /** モデルが未読込で、まだ載せられていない。 */
+  readonly pending: boolean;
+  readonly loaded: readonly string[];
+  readonly failed: readonly string[];
+};
+
 export class Viewer {
   readonly #container: HTMLElement;
   readonly #renderer: THREE.WebGLRenderer;
@@ -123,6 +152,8 @@ export class Viewer {
   #saccade: SaccadeState;
   #breath: BreathState;
   #idleMotion: IdleMotionState;
+  /** 体重移動 (要件 F-14-1)。待機の揺れと歩調を合わせる。 */
+  #weightShift: WeightShiftState;
   #emotionMotion: EmotionMotionState;
   /** 最後に指定した構図。寸法が変わったときに取り直すために覚えておく。 */
   #framing: FramingPreset | null = null;
@@ -155,7 +186,28 @@ export class Viewer {
    * 受信した瞬間に顔を変えると、口がまだ最初の文を喋っているのに表情だけ
    * 最後の感情になってしまう。口が該当位置を通過してから切り替える。
    */
-  #emotionMarkers: { at: number; cue: EmotionCue }[] = [];
+  /**
+   * 読み上げの進みに合わせて出す指示 (ADR-0014)。
+   *
+   * 感情も身振りも、対応する本文が読まれる位置で効かせる。先に出すと、
+   * 言葉より前に顔と体が動いてずれて見える。
+   */
+  #speechMarkers: {
+    at: number;
+    cue: EmotionCue | null;
+    gestures: readonly GestureCue[];
+  }[] = [];
+  /** 身振りの割り当て。モデルを読み直しても効かせ続けるために持つ。 */
+  #gestures: readonly GestureSource[] = [];
+  /**
+   * 身振りを載せ終えたら呼ぶ。
+   *
+   * **モデルの読み込みと割り当ての差し替えは、どちらが先に来るか決まらない。**
+   * 割り当てを載せに行った時点でモデルがまだ無いこともあれば、モデルを読んだ
+   * 時点で割り当てが既に決まっていることもある。後者は `setGestures` の戻り値
+   * では拾えないので、結果はここから知らせる (要件 F-15-11)。
+   */
+  onGesturesLoaded: ((result: GestureLoadResult) => void) | null = null;
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
@@ -202,6 +254,7 @@ export class Viewer {
     this.#saccade = createSaccadeState(seed + 1);
     this.#breath = createBreathState();
     this.#idleMotion = createIdleMotionState();
+    this.#weightShift = createWeightShiftState();
     this.#emotionMotion = createEmotionMotionState();
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
@@ -250,7 +303,11 @@ export class Viewer {
   async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
     const generation = ++this.#loadGeneration;
     this.#clearModel();
-    if (context === null) return null;
+    if (context === null) {
+      // モデルが無くなれば身振りも載っていない。診断の表示を合わせる。
+      this.onGesturesLoaded?.({ pending: true, loaded: [], failed: [] });
+      return null;
+    }
 
     const adapter =
       context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
@@ -267,7 +324,69 @@ export class Viewer {
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
     this.setFraming("upper");
 
+    // 身振りはモデルへ結び付くので、読み込み直したら載せ直す。
+    await this.#loadGestures();
+
     return this.#diagnostics();
+  }
+
+  /**
+   * 身振りの割り当てを差し替える (要件 F-15)。
+   *
+   * モデルが未読込なら覚えるだけ。次にモデルを読んだ時点で載せる。
+   *
+   * @returns タグごとの結果。読めなかったものを知らせるために返す。
+   */
+  async setGestures(gestures: readonly GestureSource[]): Promise<GestureLoadResult> {
+    this.#gestures = gestures;
+    return this.#loadGestures();
+  }
+
+  /** 身振りを始める。登録が無ければ何も起きない。 */
+  playGesture(tag: string, intensity = 1): boolean {
+    return this.#adapter?.playGesture(tag, intensity) ?? false;
+  }
+
+  async #loadGestures(): Promise<GestureLoadResult> {
+    const adapter = this.#adapter;
+    // モデルが無いあいだは載せようがない。読めなかったのとは違う。
+    // モデルを読んだ時点で載せ直すので、ここで諦めたままにはならない。
+    if (adapter === null) return this.#reportGestures({ pending: true });
+
+    const generation = this.#loadGeneration;
+    adapter.clearGestures();
+
+    const loaded: string[] = [];
+    const failed: string[] = [];
+    for (const gesture of this.#gestures) {
+      let ok = false;
+      try {
+        ok = await adapter.registerGesture(gesture.tag, gesture.url);
+      } catch {
+        ok = false;
+      }
+      // 待っているあいだにモデルが替わっていたら、この結果は捨てる。
+      // 走っている次の読み込みが改めて知らせるので、ここでは知らせない。
+      if (generation !== this.#loadGeneration) {
+        return { pending: true, loaded: [], failed: [] };
+      }
+      (ok ? loaded : failed).push(gesture.tag);
+    }
+    return this.#reportGestures({ pending: false, loaded, failed });
+  }
+
+  #reportGestures(result: {
+    pending: boolean;
+    loaded?: readonly string[];
+    failed?: readonly string[];
+  }): GestureLoadResult {
+    const done: GestureLoadResult = {
+      pending: result.pending,
+      loaded: result.loaded ?? [],
+      failed: result.failed ?? [],
+    };
+    this.onGesturesLoaded?.(done);
+    return done;
   }
 
   /**
@@ -296,12 +415,15 @@ export class Viewer {
       emotionMorphs: adapter instanceof PmxAdapter ? adapter.emotionMorphs() : null,
       boneNames: adapter.boneNames(),
       adjustedBones: adapter.adjustedBones(),
+      height: adapter.height(),
+      groundY: adapter.bounds().minY,
+      headY: adapter.headWorldPosition(new THREE.Vector3()).y,
     };
   }
 
   /** 感情を即座に切り替える。手動の確認用。 */
   setEmotion(emotion: CanonicalEmotion, intensity = 1): void {
-    this.#emotionMarkers = [];
+    this.#speechMarkers = [];
     this.#expression = setExpressionTarget(this.#expression, emotion, intensity);
     // 体も一緒に動かす。表情だけだと顔しか変わらず、人形のままに見える
     this.#emotionMotion = setEmotionMotion(this.#emotionMotion, emotion, intensity);
@@ -313,9 +435,13 @@ export class Viewer {
    * 差分だけを渡すこと。感情はこのテキストの先頭に対応するので、口が
    * そこへ到達した時点で切り替える。
    */
-  feedSpeech(text: string, emotion: EmotionCue | null = null): void {
-    if (emotion !== null) {
-      this.#emotionMarkers.push({ at: this.#lipSync.fed, cue: emotion });
+  feedSpeech(
+    text: string,
+    emotion: EmotionCue | null = null,
+    gestures: readonly GestureCue[] = [],
+  ): void {
+    if (emotion !== null || gestures.length > 0) {
+      this.#speechMarkers.push({ at: this.#lipSync.fed, cue: emotion, gestures });
     }
     this.#lipSync = feedLipSync(this.#lipSync, text);
   }
@@ -327,12 +453,19 @@ export class Viewer {
    * 再生位置から口形が決まる。感情はこの音声の先頭に対応するため、
    * 待たずにここで切り替える。
    */
-  speakAudio(text: string, emotion: EmotionCue | null, sample: () => AudioSample): void {
+  speakAudio(
+    text: string,
+    emotion: EmotionCue | null,
+    gestures: readonly GestureCue[],
+    sample: () => AudioSample,
+  ): void {
     // 疑似リップシンクの積み残しを持ち込まない。二重に口が動いてしまう。
     this.#lipSync = createLipSyncState();
-    this.#emotionMarkers = [];
+    this.#speechMarkers = [];
     this.#audioLipSync = createAudioLipSyncState(text);
     this.#audioSampler = sample;
+    // 身振りはこの音声の先頭に対応する。待たずにここで始める。
+    for (const gesture of gestures) this.playGesture(gesture.tag, gesture.intensity);
     if (emotion !== null) {
       this.#expression = setExpressionTarget(
         this.#expression,
@@ -460,6 +593,9 @@ export class Viewer {
 
     const head = adapter.headWorldPosition(new THREE.Vector3());
     const height = adapter.height();
+    // **足元が y=0 にあるとは限らない。** 原点が腰にあるモデルもある。
+    // 0 を床と決め打ちすると、構図が上下にずれて宙に浮いて見える。
+    const ground = adapter.bounds().minY;
 
     // カメラは目線の高さに置く。下から見上げたり上から見下ろしたりすると、
     // モデルの視線もそちらへ向いて表情が不自然になる。
@@ -472,14 +608,18 @@ export class Viewer {
         break;
       case "upper":
         this.#camera.position.set(0, head.y, height * 0.8);
-        this.#controls.target.set(0, head.y * 0.93, 0);
+        this.#controls.target.set(0, ground + (head.y - ground) * 0.93, 0);
         break;
       case "full":
         // 視野 30 度では、距離 d で見える縦幅が 2d·tan15° = 0.536d となる。
         // 1.7h では 0.911h しか入らず、身長 h の頭と足が切れる。2.0h にして
         // 1.07h を確保し、上下におよそ 3% の余白を残す。
-        this.#camera.position.set(0, height * 0.55, height * FULL_DISTANCE_FACTOR);
-        this.#controls.target.set(0, height * 0.5, 0);
+        this.#camera.position.set(
+          0,
+          ground + height * 0.55,
+          height * FULL_DISTANCE_FACTOR,
+        );
+        this.#controls.target.set(0, ground + height * 0.5, 0);
         break;
     }
     this.#controls.update();
@@ -492,14 +632,18 @@ export class Viewer {
    * 末尾のタグの後に本文が続かない場合に取り残されないようにするため。
    */
   #fireDueEmotions(): void {
-    while (this.#emotionMarkers.length > 0) {
-      const marker = this.#emotionMarkers[0];
+    while (this.#speechMarkers.length > 0) {
+      const marker = this.#speechMarkers[0];
       if (marker === undefined) break;
       const reached = this.#lipSync.consumed >= marker.at;
       const nothingLeft = this.#lipSync.pending.length === 0;
       if (!reached && !nothingLeft) break;
 
-      this.#emotionMarkers.shift();
+      this.#speechMarkers.shift();
+      for (const gesture of marker.gestures) {
+        this.playGesture(gesture.tag, gesture.intensity);
+      }
+      if (marker.cue === null) continue;
       this.#expression = setExpressionTarget(
         this.#expression,
         marker.cue.emotion,
@@ -569,6 +713,11 @@ export class Viewer {
         delta,
         emotionMotion.tempo,
       );
+      this.#weightShift = advanceWeightShift(
+        this.#weightShift,
+        delta,
+        emotionMotion.tempo,
+      );
     }
     if (this.#idle.saccade) {
       this.#saccade = advanceSaccade(this.#saccade, delta);
@@ -620,6 +769,8 @@ export class Viewer {
     }
 
     if (this.#idle.motion) {
+      // 体重移動を先に置く。以降の層はこの上に重なる。
+      layers.push(evaluateWeightShift(this.#weightShift, emotionMotion.amplitude));
       layers.push(evaluateIdleMotion(this.#idleMotion, emotionMotion.amplitude));
       layers.push(emotionMotion.pose);
     }

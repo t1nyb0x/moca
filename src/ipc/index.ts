@@ -14,6 +14,7 @@ import type { Conversation } from "./generated/Conversation";
 import type { ConversationSummary } from "./generated/ConversationSummary";
 import type { Delta } from "./generated/Delta";
 import type { ModelHandle } from "./generated/ModelHandle";
+import type { MotionHandle } from "./generated/MotionHandle";
 import type { ModelInfo } from "./generated/ModelInfo";
 import type { ProviderHealth } from "./generated/ProviderHealth";
 import type { ProviderProfileDto } from "./generated/ProviderProfileDto";
@@ -93,6 +94,17 @@ export const modelPick = (): Promise<ModelHandle | null> => call("model_pick");
 /** ドラッグ＆ドロップや前回のパスの復元に使う。 */
 export const modelOpen = (path: string): Promise<ModelHandle> =>
   call("model_open", { path });
+
+/** 身振りに使う VRMA を選ぶ (要件 F-15)。選ばなければ null。 */
+export const motionPick = (): Promise<MotionHandle | null> => call("motion_pick");
+
+/**
+ * 保存済みの VRMA を開き直す。
+ *
+ * アセットプロトコルの許可はプロセスごとに消えるため、読ませる前に毎回通す。
+ */
+export const motionOpen = (path: string): Promise<MotionHandle> =>
+  call("motion_open", { path });
 
 /**
  * モデルのパスを three.js が取得できる URL にする。

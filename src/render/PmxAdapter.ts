@@ -297,6 +297,22 @@ export class PmxAdapter implements ModelAdapter {
    * 順序が要点。ランタイムはボーンとモーフを書き換えるので、先に当てると
    * 毎フレーム消される。
    */
+  /**
+   * VRMA は VRM の人型ボーンを前提とする。PMX のボーン名は標準化されて
+   * いないので当たらない (ADR-0015、ADR-0019)。読み込まずに断る。
+   */
+  registerGesture(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  playGesture(): boolean {
+    return false;
+  }
+
+  clearGestures(): void {
+    // 登録できないので捨てるものも無い
+  }
+
   update(deltaSeconds: number): void {
     this.#elapsedSeconds += deltaSeconds;
 
@@ -346,9 +362,14 @@ export class PmxAdapter implements ModelAdapter {
   }
 
   height(): number {
+    const { minY, maxY } = this.bounds();
+    const size = maxY - minY;
+    return size > 0 ? size : 1.5;
+  }
+
+  bounds(): { readonly minY: number; readonly maxY: number } {
     const box = new THREE.Box3().setFromObject(this.#root);
-    const size = box.getSize(new THREE.Vector3());
-    return size.y > 0 ? size.y : 1.5;
+    return { minY: box.min.y, maxY: box.max.y };
   }
 
   dispose(): void {
