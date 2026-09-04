@@ -172,32 +172,39 @@ export function ViewerHost(): React.JSX.Element {
      */
     let gesturesReady: Promise<unknown> = Promise.resolve();
 
-    /** 割り当てを 3D ビューへ載せる。読めなかったものは知らせる。 */
-    const applyGestures = (gestures: readonly GestureSource[]): void => {
-      gesturesReady = viewer
-        .setGestures(
-          gestures.map((gesture) => ({
-            tag: gesture.tag,
-            url: toAssetUrl(gesture.path),
-          })),
-        )
-        .then((result) => {
-          // 載ったかどうかは何のエラーも出さずに分かれる。診断へ渡す。
-          const failed = new Set(result.failed);
-          useAppStore.getState().setGestureReport(
-            gestures.map((gesture) => ({
-              tag: gesture.tag,
-              name: gesture.name,
-              loaded: result.pending ? null : !failed.has(gesture.tag),
-            })),
-          );
+    /**
+     * 身振りを載せ終えたときの報告を診断へ渡す。
+     *
+     * **モデルの読み込みと割り当ての差し替えは、どちらが先に来るか決まらない。**
+     * 割り当てを先に載せに行くとモデルがまだ無く、その後モデルを読んだ時点で
+     * 改めて載る。両方の結末をここで受ける (要件 F-15-11)。
+     */
+    viewer.onGesturesLoaded = (result) => {
+      const failed = new Set(result.failed);
+      const store = useAppStore.getState();
+      store.setGestureReport(
+        store.gestures.map((gesture) => ({
+          tag: gesture.tag,
+          name: gesture.name,
+          loaded: result.pending ? null : !failed.has(gesture.tag),
+        })),
+      );
 
-          if (result.failed.length === 0) return;
-          setWarning(
-            `身振り ${result.failed.join("、")} を読み込めませんでした。` +
-              "ファイルが移動または削除されていないか確認してください。",
-          );
-        });
+      if (result.failed.length === 0) return;
+      setWarning(
+        `身振り ${result.failed.join("、")} を読み込めませんでした。` +
+          "ファイルが移動または削除されていないか確認してください。",
+      );
+    };
+
+    /** 割り当てを 3D ビューへ載せる。結果は onGesturesLoaded が受ける。 */
+    const applyGestures = (gestures: readonly GestureSource[]): void => {
+      gesturesReady = viewer.setGestures(
+        gestures.map((gesture) => ({
+          tag: gesture.tag,
+          url: toAssetUrl(gesture.path),
+        })),
+      );
     };
 
     /** 読み込み結果を確かめる。無音の失敗を見逃さないため。 */

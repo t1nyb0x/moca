@@ -191,6 +191,15 @@ export class Viewer {
   }[] = [];
   /** 身振りの割り当て。モデルを読み直しても効かせ続けるために持つ。 */
   #gestures: readonly GestureSource[] = [];
+  /**
+   * 身振りを載せ終えたら呼ぶ。
+   *
+   * **モデルの読み込みと割り当ての差し替えは、どちらが先に来るか決まらない。**
+   * 割り当てを載せに行った時点でモデルがまだ無いこともあれば、モデルを読んだ
+   * 時点で割り当てが既に決まっていることもある。後者は `setGestures` の戻り値
+   * では拾えないので、結果はここから知らせる (要件 F-15-11)。
+   */
+  onGesturesLoaded: ((result: GestureLoadResult) => void) | null = null;
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
@@ -285,7 +294,11 @@ export class Viewer {
   async setModel(context: ModelLoadContext | null): Promise<ModelDiagnostics | null> {
     const generation = ++this.#loadGeneration;
     this.#clearModel();
-    if (context === null) return null;
+    if (context === null) {
+      // モデルが無くなれば身振りも載っていない。診断の表示を合わせる。
+      this.onGesturesLoaded?.({ pending: true, loaded: [], failed: [] });
+      return null;
+    }
 
     const adapter =
       context.format === "pmx" ? await loadPmx(context) : await loadVrm(context.url);
@@ -328,7 +341,8 @@ export class Viewer {
   async #loadGestures(): Promise<GestureLoadResult> {
     const adapter = this.#adapter;
     // モデルが無いあいだは載せようがない。読めなかったのとは違う。
-    if (adapter === null) return { pending: true, loaded: [], failed: [] };
+    // モデルを読んだ時点で載せ直すので、ここで諦めたままにはならない。
+    if (adapter === null) return this.#reportGestures({ pending: true });
 
     const generation = this.#loadGeneration;
     adapter.clearGestures();
@@ -343,12 +357,27 @@ export class Viewer {
         ok = false;
       }
       // 待っているあいだにモデルが替わっていたら、この結果は捨てる。
+      // 走っている次の読み込みが改めて知らせるので、ここでは知らせない。
       if (generation !== this.#loadGeneration) {
         return { pending: true, loaded: [], failed: [] };
       }
       (ok ? loaded : failed).push(gesture.tag);
     }
-    return { pending: false, loaded, failed };
+    return this.#reportGestures({ pending: false, loaded, failed });
+  }
+
+  #reportGestures(result: {
+    pending: boolean;
+    loaded?: readonly string[];
+    failed?: readonly string[];
+  }): GestureLoadResult {
+    const done: GestureLoadResult = {
+      pending: result.pending,
+      loaded: result.loaded ?? [],
+      failed: result.failed ?? [],
+    };
+    this.onGesturesLoaded?.(done);
+    return done;
   }
 
   /**
