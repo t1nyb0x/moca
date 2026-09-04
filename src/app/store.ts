@@ -65,6 +65,20 @@ export type SpeechChunk = {
 export type GestureSource = {
   readonly tag: string;
   readonly path: string;
+  /** 画面に出す名前。診断でどのファイルか見分けるために持つ。 */
+  readonly name: string;
+};
+
+/**
+ * 身振りが実際に載ったか (要件 F-15-10)。
+ *
+ * 読めなかったことは何のエラーも出さずに起きる。診断で見て切り分けられる
+ * ようにする。`loaded` の null は「モデルがまだ無く、載せていない」。
+ */
+export type GestureStatus = {
+  readonly tag: string;
+  readonly name: string;
+  readonly loaded: boolean | null;
 };
 
 /**
@@ -124,6 +138,8 @@ export type AppState = {
   preview: EmotionPreview;
   /** 選択中のキャラクターの身振り (要件 F-15)。 */
   gestures: readonly GestureSource[];
+  /** 身振りが実際に載ったか。診断に出す。 */
+  gestureReport: readonly GestureStatus[];
   gesturePlay: GesturePlay;
 
   /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
@@ -177,6 +193,8 @@ export type AppState = {
   refreshGestures: (override?: readonly GestureBinding[]) => Promise<void>;
   /** 待たずに身振りを始める。 */
   playGestures: (cues: readonly GestureCue[]) => void;
+  /** 3D ビューが載せた結果を受け取る。 */
+  setGestureReport: (report: readonly GestureStatus[]) => void;
   /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
   setIdleSettings: (idle: IdleSettings) => Promise<void>;
   /**
@@ -414,6 +432,7 @@ export function createAppStore(): UseBoundStore<
     speechAudio: null,
     preview: { seq: 0, emotion: "neutral" },
     gestures: [],
+    gestureReport: [],
     gesturePlay: { seq: 0, cues: [] },
     model: null,
     modelDiagnostics: null,
@@ -449,10 +468,24 @@ export function createAppStore(): UseBoundStore<
         }
       }
 
+      const sources = usable.map((binding) => ({
+        tag: binding.tag,
+        path: binding.path,
+        name: binding.name,
+      }));
+
       set({
-        gestures: usable.map((binding) => ({ tag: binding.tag, path: binding.path })),
+        gestures: sources,
+        // 載るまでは分からない。3D ビューが結果を返したら埋まる。
+        gestureReport: sources.map((source) => ({
+          tag: source.tag,
+          name: source.name,
+          loaded: null,
+        })),
       });
     },
+
+    setGestureReport: (report) => set({ gestureReport: report }),
 
     playGestures: (cues) => {
       if (cues.length === 0) return;

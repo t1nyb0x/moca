@@ -5,6 +5,7 @@ import { MorphMappingDialog } from "./MorphMappingDialog";
 import { useAppStore } from "@/app/store";
 import { logsDir } from "@/ipc";
 import { CANONICAL_EMOTIONS } from "@/domain/emotion/types";
+import { countGestureTags } from "@/domain/motion/gesture";
 import { groupByRole, ROLES, type ExpressionRole } from "@/domain/model/expression-roles";
 import { isSoftwareRenderer } from "@/domain/model/renderer";
 import type { IdleSettings } from "@/ipc/generated/IdleSettings";
@@ -55,6 +56,8 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const characters = useAppStore((state) => state.characters);
   const providers = useAppStore((state) => state.providers);
   const activeCharacterId = useAppStore((state) => state.activeCharacterId);
+  const gestureReport = useAppStore((state) => state.gestureReport);
+  const playGestures = useAppStore((state) => state.playGestures);
 
   const [mappingOpen, setMappingOpen] = useState(false);
   const [logPath, setLogPath] = useState<string | null>(null);
@@ -77,6 +80,12 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
   const character = characters.find((item) => item.id === activeCharacterId);
   const provider = providers.find((item) => item.id === character?.providerId);
   const tagsEnabled = provider?.emotionMode === "tag";
+
+  // モデルがタグを出しているか、こちらが取りこぼしているか。感情と同じ切り分け。
+  const gestureCounts = countGestureTags(
+    lastAssistant?.rawContent ?? lastAssistant?.content ?? "",
+    gestureReport.map((item) => item.tag),
+  );
 
   return (
     <aside className="diag">
@@ -184,6 +193,25 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
             {(lastAssistant.emotions?.length ?? 0) === 0 &&
               "。モデルがタグを出していません。人格の書き方を変えるか、感情タグに従いやすいモデルをお試しください。"}
           </p>
+          {gestureReport.length > 0 && (
+            <p className="diag__note">
+              身振りのタグ:{" "}
+              <strong>
+                {[...gestureCounts.values()].reduce((sum, count) => sum + count, 0)} 回
+              </strong>
+              {[...gestureCounts].some(([, count]) => count > 0) && (
+                <>
+                  <br />
+                  <small>
+                    {[...gestureCounts]
+                      .filter(([, count]) => count > 0)
+                      .map(([tag, count]) => `[${tag}] ${count} 回`)
+                      .join("、")}
+                  </small>
+                </>
+              )}
+            </p>
+          )}
           <p className="diag__groupLabel">モデルが返した生の文字列</p>
           <p className="diag__raw">
             {(lastAssistant.rawContent ?? lastAssistant.content).slice(0, 300)}
@@ -212,6 +240,44 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }): React.JS
           <p className="diag__note">
             まぶたが下がって見えるときは「視線を向ける」を切ってお試しください。
           </p>
+        </div>
+      )}
+
+      {gestureReport.length > 0 && (
+        <div className="diag__idle">
+          <p className="diag__groupLabel">身振り</p>
+          {gestureReport.map((item) => (
+            <div key={item.tag} className="diag__gesture">
+              <button
+                type="button"
+                disabled={item.loaded !== true}
+                onClick={() => playGestures([{ tag: item.tag, intensity: 1 }])}
+              >
+                試す
+              </button>
+              <code>[{item.tag}]</code>
+              <small>
+                {item.name}
+                {item.loaded === null && "（モデルの読み込み待ち）"}
+                {item.loaded === false && "（読み込めません）"}
+              </small>
+            </div>
+          ))}
+          <p className="diag__note">
+            押すと体が動くか確かめられます。動けば経路は生きています。
+          </p>
+          {model?.format === "pmx" && (
+            <p className="diag__note diag__note--warn" role="alert">
+              身振りは VRM のみに当たります。PMX はボーン名が標準化されていない
+              ため動きません。
+            </p>
+          )}
+          {!tagsEnabled && (
+            <p className="diag__note diag__note--warn" role="alert">
+              感情タグが無効のあいだは、身振りのタグの説明もモデルへ送りません。
+              会話では身振りが出ません。
+            </p>
+          )}
         </div>
       )}
 

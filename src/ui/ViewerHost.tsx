@@ -181,10 +181,20 @@ export function ViewerHost(): React.JSX.Element {
             url: toAssetUrl(gesture.path),
           })),
         )
-        .then((failed) => {
-          if (failed.length === 0) return;
+        .then((result) => {
+          // 載ったかどうかは何のエラーも出さずに分かれる。診断へ渡す。
+          const failed = new Set(result.failed);
+          useAppStore.getState().setGestureReport(
+            gestures.map((gesture) => ({
+              tag: gesture.tag,
+              name: gesture.name,
+              loaded: result.pending ? null : !failed.has(gesture.tag),
+            })),
+          );
+
+          if (result.failed.length === 0) return;
           setWarning(
-            `身振り ${failed.join("、")} を読み込めませんでした。` +
+            `身振り ${result.failed.join("、")} を読み込めませんでした。` +
               "ファイルが移動または削除されていないか確認してください。",
           );
         });

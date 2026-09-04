@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countGestureTags,
   describeGestureTagProblem,
   normalizeGestureTag,
   usableGestures,
@@ -56,6 +57,46 @@ describe("describeGestureTagProblem", () => {
 describe("normalizeGestureTag", () => {
   it("前後の空白を落として小文字にする", () => {
     expect(normalizeGestureTag("  Wave  ")).toBe("wave");
+  });
+});
+
+describe("countGestureTags", () => {
+  it("割り当てたタグの出現を数える", () => {
+    const counts = countGestureTags("[wave]やあ。[wave]またね。", ["wave"]);
+    expect(counts.get("wave")).toBe(2);
+  });
+
+  it("強さ付きのタグも数える", () => {
+    const counts = countGestureTags("[wave:0.5]やあ。[wave]ね。", ["wave"]);
+    expect(counts.get("wave")).toBe(2);
+  });
+
+  it("出てこなかったタグは 0 で並べる", () => {
+    // 「モデルが出していない」ことを見せたいので、行を消さない
+    const counts = countGestureTags("やあ。", ["wave", "bow"]);
+    expect(counts.get("wave")).toBe(0);
+    expect(counts.get("bow")).toBe(0);
+  });
+
+  it("割り当てていないタグは数えない", () => {
+    const counts = countGestureTags("[bow]やあ。", ["wave"]);
+    expect(counts.has("bow")).toBe(false);
+  });
+
+  it("似た名前を取り違えない", () => {
+    const counts = countGestureTags("[waves]やあ。[wave]ね。", ["wave"]);
+    expect(counts.get("wave")).toBe(1);
+  });
+
+  it("原文が空でも壊れない", () => {
+    expect(countGestureTags("", ["wave"]).size).toBe(0);
+  });
+
+  it("使えない名前は正規表現に混ぜない", () => {
+    // 設定ファイルは手で書き換えられる。特殊文字で式が壊れないようにする。
+    const counts = countGestureTags("[wave]やあ。", ["wa.e", "wave"]);
+    expect(counts.has("wa.e")).toBe(false);
+    expect(counts.get("wave")).toBe(1);
   });
 });
 

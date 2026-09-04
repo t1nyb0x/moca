@@ -57,6 +57,31 @@ export function normalizeGestureTag(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * 原文に身振りのタグが何度出たかを数える。
+ *
+ * 動かないときに「モデルがタグを出していない」のか「こちらが取りこぼして
+ * いる」のかを切り分けるための材料になる。感情タグの切り分けと同じ役目
+ * (docs/emotion-protocol.md 3.6)。
+ *
+ * 数えるのは割り当て済みのタグだけ。強さの指定 (`[wave:0.5]`) も含める。
+ */
+export function countGestureTags(
+  raw: string,
+  tags: readonly string[],
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  if (raw === "") return counts;
+
+  for (const tag of tags) {
+    if (!GESTURE_TAG_PATTERN.test(tag)) continue;
+    // 感情タグと同じ文法。強さは省略できる。
+    const pattern = new RegExp(`\\[${tag}(?::\\d(?:\\.\\d+)?)?\\]`, "g");
+    counts.set(tag, raw.match(pattern)?.length ?? 0);
+  }
+  return counts;
+}
+
 /** 割り当て。パスは VRMA の絶対パス。 */
 export type GestureBinding = {
   readonly tag: string;

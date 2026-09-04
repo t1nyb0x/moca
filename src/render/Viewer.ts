@@ -104,6 +104,19 @@ export type GestureSource = {
   readonly url: string;
 };
 
+/**
+ * 身振りを載せた結果。
+ *
+ * 読めたかどうかは何のエラーも出さずに分かれる。診断へ出せるよう、タグごとの
+ * 結果として返す (要件 F-15-10)。
+ */
+export type GestureLoadResult = {
+  /** モデルが未読込で、まだ載せられていない。 */
+  readonly pending: boolean;
+  readonly loaded: readonly string[];
+  readonly failed: readonly string[];
+};
+
 export class Viewer {
   readonly #container: HTMLElement;
   readonly #renderer: THREE.WebGLRenderer;
@@ -300,9 +313,9 @@ export class Viewer {
    *
    * モデルが未読込なら覚えるだけ。次にモデルを読んだ時点で載せる。
    *
-   * @returns 読めなかったタグ。利用者へ知らせるために返す。
+   * @returns タグごとの結果。読めなかったものを知らせるために返す。
    */
-  async setGestures(gestures: readonly GestureSource[]): Promise<readonly string[]> {
+  async setGestures(gestures: readonly GestureSource[]): Promise<GestureLoadResult> {
     this.#gestures = gestures;
     return this.#loadGestures();
   }
@@ -312,13 +325,15 @@ export class Viewer {
     return this.#adapter?.playGesture(tag, intensity) ?? false;
   }
 
-  async #loadGestures(): Promise<readonly string[]> {
+  async #loadGestures(): Promise<GestureLoadResult> {
     const adapter = this.#adapter;
-    if (adapter === null) return [];
+    // モデルが無いあいだは載せようがない。読めなかったのとは違う。
+    if (adapter === null) return { pending: true, loaded: [], failed: [] };
 
     const generation = this.#loadGeneration;
     adapter.clearGestures();
 
+    const loaded: string[] = [];
     const failed: string[] = [];
     for (const gesture of this.#gestures) {
       let ok = false;
@@ -328,10 +343,12 @@ export class Viewer {
         ok = false;
       }
       // 待っているあいだにモデルが替わっていたら、この結果は捨てる。
-      if (generation !== this.#loadGeneration) return [];
-      if (!ok) failed.push(gesture.tag);
+      if (generation !== this.#loadGeneration) {
+        return { pending: true, loaded: [], failed: [] };
+      }
+      (ok ? loaded : failed).push(gesture.tag);
     }
-    return failed;
+    return { pending: false, loaded, failed };
   }
 
   /**
