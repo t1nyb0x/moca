@@ -173,6 +173,22 @@ pub struct EmotionMapping {
     pub entries: HashMap<String, Vec<MorphTarget>>,
 }
 
+/// 身振りの割り当て (要件 F-15)。
+///
+/// 返答に `[tag]` が出たら `path` の VRMA を再生する。タグの名前は利用者が
+/// 決め、システムプロンプトへ自動で書き足される (ADR-0019)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GestureBinding {
+    /// 返答に書かせるタグ名。英小文字のみ。
+    pub tag: String,
+    /// VRMA の絶対パス。
+    pub path: String,
+    /// 画面に出す名前。
+    pub name: String,
+}
+
 /// 音声合成の設定 (要件 P2)。
 ///
 /// 感情ごとの声の作り方は、正規化感情から接続先固有の値への割り当てとして
@@ -220,6 +236,9 @@ pub struct CharacterProfile {
     /// 後から足した項目なので default が要る。無いと既存の記録が読めなくなる。
     #[serde(default)]
     pub voice_settings: Option<VoiceSettings>,
+    /// 身振りの割り当て (要件 F-15)。同上。
+    #[serde(default)]
+    pub gestures: Vec<GestureBinding>,
     #[serde(default = "schema_version")]
     pub schema_version: u32,
     pub created_at: String,

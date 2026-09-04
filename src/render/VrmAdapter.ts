@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
+import {
+  createVRMAnimationHumanoidTracks,
+  VRMAnimationLoaderPlugin,
+  type VRMAnimation,
+} from "@pixiv/three-vrm-animation";
 
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import { EMOTION_KEYS, VISEME_KEYS } from "@/domain/motion/compose";
@@ -106,6 +111,32 @@ export function applyRelaxedPose(vrm: VRM): void {
   vrm.humanoid.update();
 }
 
+/** 身振りの立ち上がりと終わりを馴染ませる時間 (秒)。 */
+const GESTURE_FADE_SECONDS = 0.2;
+
+/**
+ * VRMA から体の動きだけを取り出す (要件 F-15)。
+ *
+ * **表情と視線は使わない。** クリップに任せると、読み上げ中のリップシンクや
+ * 感情の表情を上書きしてしまう。moca の芯は「返答に応じて表情が変わる」こと
+ * なので、そこはこちらが持ち続ける (ADR-0019)。
+ *
+ * **腰の移動も使わない。** マスコット表示ではモデルの外接箱に合わせて窓を
+ * 詰めており、動いているあいだに位置が変わると枠から出る (要件 F-13)。
+ */
+function createBodyClip(
+  animation: VRMAnimation,
+  vrm: VRM,
+  name: string,
+): THREE.AnimationClip {
+  const { rotation } = createVRMAnimationHumanoidTracks(
+    animation,
+    vrm.humanoid,
+    vrm.meta.metaVersion,
+  );
+  return new THREE.AnimationClip(name, undefined, [...rotation.values()]);
+}
+
 /** 書き込みを試みる表情名。ここに無いキーは無視する。 */
 const WRITABLE_KEYS: readonly string[] = [
   ...EMOTION_KEYS,
@@ -160,8 +191,18 @@ export class VrmAdapter implements ModelAdapter {
     readonly { name: string; scale: number }[]
   >;
 
+  /** 身振りの再生器 (要件 F-15)。 */
+  readonly #mixer: THREE.AnimationMixer;
+  readonly #clips = new Map<string, THREE.AnimationClip>();
+  /** 再生中の身振り。一度に動くのは一つだけ。 */
+  #action: THREE.AnimationAction | null = null;
+  /** 終わりを馴染ませ終えるまでの残り時間。null なら馴染ませ中でない。 */
+  #fadeOutLeft: number | null = null;
+
   constructor(vrm: VRM) {
     this.#vrm = vrm;
+    this.#mixer = new THREE.AnimationMixer(vrm.scene);
+    this.#mixer.addEventListener("finished", this.#onGestureFinished);
     this.textureCount = countTexturedMaterials(vrm.scene);
     this.#available = new Set(
       vrm.expressionManager?.expressions.map(
@@ -267,7 +308,104 @@ export class VrmAdapter implements ModelAdapter {
     this.#posedLast = applied;
   }
 
+  /**
+   * VRMA を読み、身振りとして登録する (要件 F-15)。
+   *
+   * VRMA も glTF なので、モデルと同じ経路で読める。中身は IPC を通らない
+   * (docs/ipc-contract.md 2.5)。
+   */
+  async registerGesture(tag: string, url: string): Promise<boolean> {
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+
+    const gltf = await loader.loadAsync(url);
+    const animations = gltf.userData.vrmAnimations as VRMAnimation[] | undefined;
+    const animation = animations?.[0];
+    if (animation === undefined) return false;
+
+    const clip = createBodyClip(animation, this.#vrm, tag);
+    // 体を動かすものが無いなら、登録しても何も起きない
+    if (clip.tracks.length === 0) return false;
+
+    this.#forget(tag);
+    this.#clips.set(tag, clip);
+    return true;
+  }
+
+  /**
+   * 身振りを始める。
+   *
+   * `intensity` はそのまま重みにする。1 未満なら基準の姿勢との中間になり、
+   * 動きが小さくなる。0 では何も起きないので始めない。
+   */
+  playGesture(tag: string, intensity: number): boolean {
+    const clip = this.#clips.get(tag);
+    if (clip === undefined) return false;
+
+    const weight = Math.min(1, Math.max(0, intensity));
+    if (weight <= 0) return false;
+
+    // 前の身振りは畳んでから始める。重ねると腕が二重に振れる。
+    this.#stopGesture();
+
+    const action = this.#mixer.clipAction(clip);
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    // 終わりは自分で馴染ませる。切ると最後の姿勢から基準へ飛ぶ。
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(weight);
+    action.fadeIn(GESTURE_FADE_SECONDS);
+    action.play();
+
+    this.#action = action;
+    this.#fadeOutLeft = null;
+    return true;
+  }
+
+  clearGestures(): void {
+    this.#stopGesture();
+    for (const tag of [...this.#clips.keys()]) this.#forget(tag);
+  }
+
+  /** 再生を終え、ボーンを基準へ戻す。 */
+  #stopGesture(): void {
+    this.#action?.stop();
+    this.#action = null;
+    this.#fadeOutLeft = null;
+  }
+
+  #forget(tag: string): void {
+    const clip = this.#clips.get(tag);
+    if (clip === undefined) return;
+    this.#mixer.uncacheClip(clip);
+    this.#clips.delete(tag);
+  }
+
+  /**
+   * 最後まで再生し終えた。最後の姿勢から基準へ馴染ませる。
+   *
+   * ここで止めきらないと、クリップの最終フレームがボーンに残り続け、
+   * 待機の動きへ戻れなくなる。
+   */
+  #onGestureFinished = (): void => {
+    if (this.#action === null) return;
+    this.#action.fadeOut(GESTURE_FADE_SECONDS);
+    this.#fadeOutLeft = GESTURE_FADE_SECONDS;
+  };
+
+  /**
+   * **姿勢の書き込みより後に回す。** `applyPose` は基準からの差を絶対値で
+   * 書くので、先に走らせるとクリップを消してしまう。この順なら、クリップが
+   * 動かすボーンはクリップが持ち、触らないボーンには呼吸や待機が残る。
+   */
   update(deltaSeconds: number): void {
+    if (this.#action !== null) {
+      this.#mixer.update(deltaSeconds);
+      if (this.#fadeOutLeft !== null) {
+        this.#fadeOutLeft -= deltaSeconds;
+        if (this.#fadeOutLeft <= 0) this.#stopGesture();
+      }
+    }
     this.#vrm.update(deltaSeconds);
   }
 
@@ -302,6 +440,8 @@ export class VrmAdapter implements ModelAdapter {
   }
 
   dispose(): void {
+    this.#mixer.removeEventListener("finished", this.#onGestureFinished);
+    this.clearGestures();
     VRMUtils.deepDispose(this.#vrm.scene);
   }
 }

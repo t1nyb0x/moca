@@ -16,7 +16,15 @@ import type { EmotionMapping } from "@/ipc/generated/EmotionMapping";
 import type { CharacterProfile } from "@/ipc/generated/CharacterProfile";
 import type { Conversation } from "@/ipc/generated/Conversation";
 import type { ConversationSummary } from "@/ipc/generated/ConversationSummary";
-import { CANONICAL_EMOTIONS, NEUTRAL_CUE, type CanonicalEmotion, type EmotionCue } from "@/domain/emotion/types";
+import {
+  CANONICAL_EMOTIONS,
+  NEUTRAL_CUE,
+  type CanonicalEmotion,
+  type EmotionCue,
+  type GestureCue,
+} from "@/domain/emotion/types";
+import { usableGestures } from "@/domain/motion/gesture";
+import type { GestureBinding } from "@/ipc/generated/GestureBinding";
 import { resolveDefaultPresets } from "@/domain/voice/emotion-preset";
 import {
   canEnterMascot,
@@ -49,6 +57,25 @@ export type SpeechChunk = {
   readonly text: string;
   /** このテキストの先頭に対応する感情。無ければ null。 */
   readonly emotion: EmotionCue | null;
+  /** このテキストの先頭で始める身振り (要件 F-15)。 */
+  readonly gestures: readonly GestureCue[];
+};
+
+/** 3D ビューへ載せる身振り。パスは Rust 側でスコープを通したもの。 */
+export type GestureSource = {
+  readonly tag: string;
+  readonly path: string;
+};
+
+/**
+ * 待たずに始める身振り。
+ *
+ * 手動の確認と、末尾のタグの後に本文が続かなかった場合に使う。
+ * `seq` を増やすことで、同じ指示が続けて届いても変化として検出できる。
+ */
+export type GesturePlay = {
+  readonly seq: number;
+  readonly cues: readonly GestureCue[];
 };
 
 /**
@@ -95,6 +122,9 @@ export type AppState = {
   speech: SpeechChunk;
   speechAudio: SpeechAudio | null;
   preview: EmotionPreview;
+  /** 選択中のキャラクターの身振り (要件 F-15)。 */
+  gestures: readonly GestureSource[];
+  gesturePlay: GesturePlay;
 
   /** 読み込み済みのモデル。null はモデル未設定 (要件 F-02)。 */
   model: ModelHandle | null;
@@ -139,6 +169,14 @@ export type AppState = {
   setModelDiagnostics: (diagnostics: ModelDiagnostics | null) => void;
   /** 感情を手で指定する。LLM と同じ経路を通るので切り分けに使える。 */
   previewEmotion: (emotion: CanonicalEmotion) => void;
+  /**
+   * 選択中のキャラクターの身振りを読み直す (要件 F-15)。
+   *
+   * @param override 保存前の割り当てを試すときに渡す。
+   */
+  refreshGestures: (override?: readonly GestureBinding[]) => Promise<void>;
+  /** 待たずに身振りを始める。 */
+  playGestures: (cues: readonly GestureCue[]) => void;
   /** アイドル挙動の切り替え (要件 F-04-6)。選択中のキャラクターへ保存する。 */
   setIdleSettings: (idle: IdleSettings) => Promise<void>;
   /**
@@ -372,9 +410,11 @@ export function createAppStore(): UseBoundStore<
     requestId: null,
     error: null,
     emotion: NEUTRAL,
-    speech: { seq: 0, text: "", emotion: null },
+    speech: { seq: 0, text: "", emotion: null, gestures: [] },
     speechAudio: null,
     preview: { seq: 0, emotion: "neutral" },
+    gestures: [],
+    gesturePlay: { seq: 0, cues: [] },
     model: null,
     modelDiagnostics: null,
     showViewer: true,
@@ -386,6 +426,40 @@ export function createAppStore(): UseBoundStore<
     clearError: () => set({ error: null }),
 
     setModelDiagnostics: (diagnostics) => set({ modelDiagnostics: diagnostics }),
+
+    /**
+     * 身振りの割り当てを読み直す (要件 F-15)。
+     *
+     * アセットプロトコルの許可はプロセスごとに消えるので、読ませる前に
+     * 毎回通す。開けなかったファイルもそのまま載せる。読めないことは
+     * 3D ビュー側が知らせる。
+     */
+    refreshGestures: async (override) => {
+      const current = get();
+      const character = current.characters.find(
+        (item) => item.id === current.activeCharacterId,
+      );
+      const usable = usableGestures(override ?? character?.gestures ?? []);
+
+      for (const binding of usable) {
+        try {
+          await ipc.motionOpen(binding.path);
+        } catch {
+          // 消えていても続ける。会話は止めない。
+        }
+      }
+
+      set({
+        gestures: usable.map((binding) => ({ tag: binding.tag, path: binding.path })),
+      });
+    },
+
+    playGestures: (cues) => {
+      if (cues.length === 0) return;
+      set((current) => ({
+        gesturePlay: { seq: current.gesturePlay.seq + 1, cues },
+      }));
+    },
 
     previewEmotion: (emotion) =>
       set((current) => ({
@@ -615,6 +689,7 @@ export function createAppStore(): UseBoundStore<
         // 読み込みに失敗した起動が操作できないアプリになる。
         if (settings.mascot) await get().setMascot(true);
 
+        await get().refreshGestures();
         await ensureVoicePresets(active, get, set);
       } catch (error) {
         set({ error: error as CommandError });
@@ -704,6 +779,7 @@ export function createAppStore(): UseBoundStore<
       if (character?.modelPath != null) {
         await get().openModel(character.modelPath);
       }
+      await get().refreshGestures();
 
       const settings = get().settings;
       if (settings === null) return;
@@ -818,7 +894,11 @@ export function createAppStore(): UseBoundStore<
       };
 
       const requestId = newId();
-      const assembler = new ResponseAssembler();
+      // 身振りのタグは利用者が決めるので、割り当ての分だけパーサへ教える。
+      // 教えないタグは本文として画面に出る (要件 F-15)。
+      const assembler = new ResponseAssembler(
+        usableGestures(character?.gestures ?? []).map((binding) => binding.tag),
+      );
 
       // 声を出す設定なら、口は音声に合わせる。文字数からの推測はしない。
       const voiceCharacterId =
@@ -852,7 +932,12 @@ export function createAppStore(): UseBoundStore<
             if (voiceCharacterId !== null) {
               // 文が閉じた時点で合成へ回す。返答の完成を待つと喋り始めが遅れる。
               // 強さも渡す。落とすと表情が常に最大になる。
-              const pushed = pushSpeech(segmenter, update.appendedText, update.emotion);
+              const pushed = pushSpeech(
+                segmenter,
+                update.appendedText,
+                update.emotion,
+                update.gestures,
+              );
               segmenter = pushed.state;
               for (const segment of pushed.segments) {
                 speechQueue.enqueue(voiceCharacterId, segment);
@@ -867,12 +952,15 @@ export function createAppStore(): UseBoundStore<
               // 疑似リップシンクへは渡さない。
               speech:
                 voiceCharacterId !== null ||
-                (update.appendedText === "" && update.emotion === null)
+                (update.appendedText === "" &&
+                  update.emotion === null &&
+                  update.gestures.length === 0)
                   ? current.speech
                   : {
                       seq: current.speech.seq + 1,
                       text: update.appendedText,
                       emotion: update.emotion,
+                      gestures: update.gestures,
                     },
             }));
           },
@@ -887,6 +975,9 @@ export function createAppStore(): UseBoundStore<
           for (const segment of rest.segments) {
             speechQueue.enqueue(voiceCharacterId, segment);
           }
+          // 末尾のタグの後に本文が続かなければ、乗せる音声が無い。
+          // 待つ相手がいないので、ここで動かす。
+          get().playGestures(rest.state.gestures);
         }
 
         // 中断でも受け取れた分は残す。ユーザーの目に見えていたものを消さない。

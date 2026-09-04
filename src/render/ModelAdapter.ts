@@ -59,6 +59,27 @@ export interface ModelAdapter {
    */
   applyPose(pose: PoseMap): void;
 
+  /**
+   * 身振りのモーションを登録する (要件 F-15)。
+   *
+   * 同じタグが既にあれば差し替える。読めなければ false を返す。**対応しない
+   * 形式では何もせず false を返す。** VRMA は VRM の人型ボーンを前提とする
+   * ため、PMX には当たらない (ADR-0015、ADR-0019)。
+   */
+  registerGesture(tag: string, url: string): Promise<boolean>;
+
+  /**
+   * 登録済みの身振りを始める。登録が無ければ false。
+   *
+   * 一度に動くのは一つだけ。重ねると腕が二重に振れて破綻する。
+   *
+   * @param intensity 0.0〜1.0。基準の姿勢からどれだけ寄せるか。
+   */
+  playGesture(tag: string, intensity: number): boolean;
+
+  /** 登録した身振りをすべて捨てる。 */
+  clearGestures(): void;
+
   /** 毎フレーム呼ぶ。SpringBone や視線の更新を含む。 */
   update(deltaSeconds: number): void;
 

@@ -1,5 +1,9 @@
 import { EmotionTagParser } from "@/domain/emotion/parser";
-import { NEUTRAL_CUE, type EmotionCue } from "@/domain/emotion/types";
+import {
+  NEUTRAL_CUE,
+  type EmotionCue,
+  type GestureCue,
+} from "@/domain/emotion/types";
 import type { EmotionSpan } from "@/ipc/generated/EmotionSpan";
 import type { Message } from "@/ipc/generated/Message";
 
@@ -11,7 +15,12 @@ export type AssemblerUpdate = {
   readonly appendedText: string;
   /** 感情が変わったなら新しい感情。変わっていなければ null。 */
   readonly emotion: EmotionCue | null;
+  /** この差分で指示された身振り (要件 F-15)。無ければ空。 */
+  readonly gestures: readonly GestureCue[];
 };
+
+/** 身振りが一つも指示されなかったときの値。毎回作らない。 */
+const NO_GESTURES: readonly GestureCue[] = [];
 
 const NEUTRAL = NEUTRAL_CUE;
 
@@ -27,12 +36,20 @@ const NEUTRAL = NEUTRAL_CUE;
  * ずれるため、復元時に表示と噛み合わない。
  */
 export class ResponseAssembler {
-  #parser = new EmotionTagParser();
+  readonly #parser: EmotionTagParser;
   #display = "";
   #raw = "";
   #emotions: EmotionSpan[] = [];
   #current: EmotionCue = NEUTRAL;
   #finished = false;
+
+  /**
+   * @param gestures 利用者が割り当てた身振りのタグ名 (要件 F-15)。
+   *   渡さなければ従来どおり感情タグだけを拾う。
+   */
+  constructor(gestures: readonly string[] = []) {
+    this.#parser = new EmotionTagParser(gestures);
+  }
 
   get display(): string {
     return this.#display;
@@ -57,7 +74,9 @@ export class ResponseAssembler {
 
   /** ストリーム終端。閉じないまま残った文字を取りこぼさない。 */
   finish(): AssemblerUpdate {
-    if (this.#finished) return { appendedText: "", emotion: null };
+    if (this.#finished) {
+      return { appendedText: "", emotion: null, gestures: NO_GESTURES };
+    }
     this.#finished = true;
     return this.#consume(this.#parser.flush());
   }
@@ -65,11 +84,18 @@ export class ResponseAssembler {
   #consume(events: ReturnType<EmotionTagParser["push"]>): AssemblerUpdate {
     let appendedText = "";
     let emotion: EmotionCue | null = null;
+    let gestures: GestureCue[] | null = null;
 
     for (const event of events) {
       if (event.type === "text") {
         appendedText += event.value;
         this.#display += event.value;
+        continue;
+      }
+
+      if (event.type === "gesture") {
+        // 身振りは繰り返しても意味を持つので、同じものでも間引かない。
+        (gestures ??= []).push({ tag: event.tag, intensity: event.intensity });
         continue;
       }
 
@@ -94,7 +120,7 @@ export class ResponseAssembler {
       });
     }
 
-    return { appendedText, emotion };
+    return { appendedText, emotion, gestures: gestures ?? NO_GESTURES };
   }
 
   /**

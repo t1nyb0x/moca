@@ -19,6 +19,8 @@ vi.mock("@/ipc", () => ({
   characterUpsert: vi.fn(),
   modelPick: vi.fn(),
   modelOpen: vi.fn(),
+  motionPick: vi.fn(),
+  motionOpen: vi.fn(),
   conversationsIndex: vi.fn(),
   conversationDelete: vi.fn(),
   ttsSynthesize: vi.fn(),
@@ -69,6 +71,7 @@ const character: CharacterProfile = {
   modelFormat: null,
   systemPrompt: "あなたは倉本千奈です",
   providerId: "p1",
+  gestures: [],
   cameraPreset: null,
   idleSettings: {
     blink: true,
@@ -1017,6 +1020,52 @@ describe("send", () => {
     expect(assistant?.rawContent).toContain("[happy]");
     expect(assistant?.emotions).toHaveLength(2);
     expect(instance.getState().emotion.emotion).toBe("sad");
+  });
+
+  it("割り当てた身振りのタグを本文から取り除く", async () => {
+    respondWith(["[wave]ごきげんよう。"]);
+    const instance = store();
+    instance.setState({
+      characters: [
+        { ...character, gestures: [{ tag: "wave", path: "C:/m/w.vrma", name: "w" }] },
+      ],
+    });
+
+    await instance.getState().send("やあ");
+
+    const assistant = instance.getState().conversation?.messages[1];
+    expect(assistant?.content).toBe("ごきげんよう。");
+    // 原文はタグごと残す。再開時に同じ動きを復元できるようにする。
+    expect(assistant?.rawContent).toContain("[wave]");
+  });
+
+  it("割り当てていないタグは本文として残す", async () => {
+    // 黙って捨てると、本文中の [検索] のような角括弧まで消えてしまう
+    respondWith(["[bow]ごきげんよう。"]);
+    const instance = store();
+
+    await instance.getState().send("やあ");
+
+    expect(instance.getState().conversation?.messages[1]?.content).toBe(
+      "[bow]ごきげんよう。",
+    );
+  });
+
+  it("身振りは発話と一緒に 3D ビューへ渡す", async () => {
+    // 読み上げより先に手が動くと、言葉と身振りがずれて見える
+    respondWith(["[wave]やあ"]);
+    const instance = store();
+    instance.setState({
+      characters: [
+        { ...character, gestures: [{ tag: "wave", path: "C:/m/w.vrma", name: "w" }] },
+      ],
+    });
+
+    await instance.getState().send("やあ");
+
+    expect(instance.getState().speech.gestures).toEqual([
+      { tag: "wave", intensity: 1 },
+    ]);
   });
 
   it("返答に使ったモデルを記録する", async () => {

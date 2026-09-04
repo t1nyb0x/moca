@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import type { CanonicalEmotion, EmotionCue } from "@/domain/emotion/types";
+import type {
+  CanonicalEmotion,
+  EmotionCue,
+  GestureCue,
+} from "@/domain/emotion/types";
 import type { MorphTarget } from "@/domain/model/pmx-mapping";
 import type { ModelDiagnostics } from "@/domain/model/diagnostics";
 import {
@@ -94,6 +98,12 @@ const DEFAULT_IDLE: IdleSettings = {
  * 受けない。毎フレームの値を React state に置くと 60fps で再レンダリングが
  * 走る。
  */
+/** 身振りの割り当て。URL はアセットプロトコル経由のもの。 */
+export type GestureSource = {
+  readonly tag: string;
+  readonly url: string;
+};
+
 export class Viewer {
   readonly #container: HTMLElement;
   readonly #renderer: THREE.WebGLRenderer;
@@ -155,7 +165,19 @@ export class Viewer {
    * 受信した瞬間に顔を変えると、口がまだ最初の文を喋っているのに表情だけ
    * 最後の感情になってしまう。口が該当位置を通過してから切り替える。
    */
-  #emotionMarkers: { at: number; cue: EmotionCue }[] = [];
+  /**
+   * 読み上げの進みに合わせて出す指示 (ADR-0014)。
+   *
+   * 感情も身振りも、対応する本文が読まれる位置で効かせる。先に出すと、
+   * 言葉より前に顔と体が動いてずれて見える。
+   */
+  #speechMarkers: {
+    at: number;
+    cue: EmotionCue | null;
+    gestures: readonly GestureCue[];
+  }[] = [];
+  /** 身振りの割り当て。モデルを読み直しても効かせ続けるために持つ。 */
+  #gestures: readonly GestureSource[] = [];
 
   /** 読み込みや描画の失敗を外へ伝える。 */
   onError: ((error: unknown) => void) | null = null;
@@ -267,7 +289,49 @@ export class Viewer {
     adapter.setLookAtTarget(this.#idle.lookAt ? this.#lookAtTarget : null);
     this.setFraming("upper");
 
+    // 身振りはモデルへ結び付くので、読み込み直したら載せ直す。
+    await this.#loadGestures();
+
     return this.#diagnostics();
+  }
+
+  /**
+   * 身振りの割り当てを差し替える (要件 F-15)。
+   *
+   * モデルが未読込なら覚えるだけ。次にモデルを読んだ時点で載せる。
+   *
+   * @returns 読めなかったタグ。利用者へ知らせるために返す。
+   */
+  async setGestures(gestures: readonly GestureSource[]): Promise<readonly string[]> {
+    this.#gestures = gestures;
+    return this.#loadGestures();
+  }
+
+  /** 身振りを始める。登録が無ければ何も起きない。 */
+  playGesture(tag: string, intensity = 1): boolean {
+    return this.#adapter?.playGesture(tag, intensity) ?? false;
+  }
+
+  async #loadGestures(): Promise<readonly string[]> {
+    const adapter = this.#adapter;
+    if (adapter === null) return [];
+
+    const generation = this.#loadGeneration;
+    adapter.clearGestures();
+
+    const failed: string[] = [];
+    for (const gesture of this.#gestures) {
+      let ok = false;
+      try {
+        ok = await adapter.registerGesture(gesture.tag, gesture.url);
+      } catch {
+        ok = false;
+      }
+      // 待っているあいだにモデルが替わっていたら、この結果は捨てる。
+      if (generation !== this.#loadGeneration) return [];
+      if (!ok) failed.push(gesture.tag);
+    }
+    return failed;
   }
 
   /**
@@ -301,7 +365,7 @@ export class Viewer {
 
   /** 感情を即座に切り替える。手動の確認用。 */
   setEmotion(emotion: CanonicalEmotion, intensity = 1): void {
-    this.#emotionMarkers = [];
+    this.#speechMarkers = [];
     this.#expression = setExpressionTarget(this.#expression, emotion, intensity);
     // 体も一緒に動かす。表情だけだと顔しか変わらず、人形のままに見える
     this.#emotionMotion = setEmotionMotion(this.#emotionMotion, emotion, intensity);
@@ -313,9 +377,13 @@ export class Viewer {
    * 差分だけを渡すこと。感情はこのテキストの先頭に対応するので、口が
    * そこへ到達した時点で切り替える。
    */
-  feedSpeech(text: string, emotion: EmotionCue | null = null): void {
-    if (emotion !== null) {
-      this.#emotionMarkers.push({ at: this.#lipSync.fed, cue: emotion });
+  feedSpeech(
+    text: string,
+    emotion: EmotionCue | null = null,
+    gestures: readonly GestureCue[] = [],
+  ): void {
+    if (emotion !== null || gestures.length > 0) {
+      this.#speechMarkers.push({ at: this.#lipSync.fed, cue: emotion, gestures });
     }
     this.#lipSync = feedLipSync(this.#lipSync, text);
   }
@@ -327,12 +395,19 @@ export class Viewer {
    * 再生位置から口形が決まる。感情はこの音声の先頭に対応するため、
    * 待たずにここで切り替える。
    */
-  speakAudio(text: string, emotion: EmotionCue | null, sample: () => AudioSample): void {
+  speakAudio(
+    text: string,
+    emotion: EmotionCue | null,
+    gestures: readonly GestureCue[],
+    sample: () => AudioSample,
+  ): void {
     // 疑似リップシンクの積み残しを持ち込まない。二重に口が動いてしまう。
     this.#lipSync = createLipSyncState();
-    this.#emotionMarkers = [];
+    this.#speechMarkers = [];
     this.#audioLipSync = createAudioLipSyncState(text);
     this.#audioSampler = sample;
+    // 身振りはこの音声の先頭に対応する。待たずにここで始める。
+    for (const gesture of gestures) this.playGesture(gesture.tag, gesture.intensity);
     if (emotion !== null) {
       this.#expression = setExpressionTarget(
         this.#expression,
@@ -492,14 +567,18 @@ export class Viewer {
    * 末尾のタグの後に本文が続かない場合に取り残されないようにするため。
    */
   #fireDueEmotions(): void {
-    while (this.#emotionMarkers.length > 0) {
-      const marker = this.#emotionMarkers[0];
+    while (this.#speechMarkers.length > 0) {
+      const marker = this.#speechMarkers[0];
       if (marker === undefined) break;
       const reached = this.#lipSync.consumed >= marker.at;
       const nothingLeft = this.#lipSync.pending.length === 0;
       if (!reached && !nothingLeft) break;
 
-      this.#emotionMarkers.shift();
+      this.#speechMarkers.shift();
+      for (const gesture of marker.gestures) {
+        this.playGesture(gesture.tag, gesture.intensity);
+      }
+      if (marker.cue === null) continue;
       this.#expression = setExpressionTarget(
         this.#expression,
         marker.cue.emotion,

@@ -297,6 +297,22 @@ export class PmxAdapter implements ModelAdapter {
    * 順序が要点。ランタイムはボーンとモーフを書き換えるので、先に当てると
    * 毎フレーム消される。
    */
+  /**
+   * VRMA は VRM の人型ボーンを前提とする。PMX のボーン名は標準化されて
+   * いないので当たらない (ADR-0015、ADR-0019)。読み込まずに断る。
+   */
+  registerGesture(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  playGesture(): boolean {
+    return false;
+  }
+
+  clearGestures(): void {
+    // 登録できないので捨てるものも無い
+  }
+
   update(deltaSeconds: number): void {
     this.#elapsedSeconds += deltaSeconds;
 

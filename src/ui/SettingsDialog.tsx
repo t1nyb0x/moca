@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { emptyVoiceSettings, VoiceSettingsForm } from "./VoiceSettingsForm";
+import { GestureSettingsForm } from "./GestureSettingsForm";
 
 import { useAppStore } from "@/app/store";
 import * as ipc from "@/ipc";
@@ -71,6 +72,7 @@ function emptyCharacter(providerId: string): CharacterProfile {
       motion: true,
     },
     emotionMapping: null,
+    gestures: [],
     voiceSettings: null,
     schemaVersion: 1,
     createdAt: now,
@@ -519,6 +521,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </label>
               <fieldset className="form__fieldset">
                 <legend>声</legend>
+                <GestureSettingsForm
+                  value={character.gestures}
+                  onChange={(gestures) => setCharacter({ ...character, gestures })}
+                />
+
                 <VoiceSettingsForm
                   value={character.voiceSettings ?? emptyVoiceSettings()}
                   onChange={(voiceSettings) =>

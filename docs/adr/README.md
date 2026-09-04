@@ -35,3 +35,4 @@
 | [0016](0016-single-transparent-window.md) | マスコット表示は単一の透過ウィンドウで実現する | 採択 |
 | [0017](0017-vrm-pmx-only.md) | moca は VRM と PMX に留まり、Unity 資産を扱わない | 採択 |
 | [0018](0018-cevio-over-com.md) | CeVIO AI を COM で直に叩く経路を持つ | 採択 |
+| [0019](0019-gestures-from-user-vrma.md) | 身振りは利用者が与える VRMA で行う | 採択 |
