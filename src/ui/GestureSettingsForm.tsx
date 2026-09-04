@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { useAppStore } from "@/app/store";
 import {
   describeGestureTagProblem,
   normalizeGestureTag,
@@ -14,6 +13,10 @@ import type { GestureBinding } from "@/ipc/generated/GestureBinding";
  *
  * VRMA を読み込んでタグ名を付けると、その名前がシステムプロンプトへ載る。
  * 返答にそのタグが出たら、割り当てたモーションを再生する (ADR-0019)。
+ *
+ * **動かして確かめるのはここではなく診断パネルで行う。** この画面は全面を
+ * 覆うダイアログなので、押しても背後のモデルが見えない。診断は横に開く板で、
+ * モデルを見たまま押せる (要件 F-15-9)。
  */
 export function GestureSettingsForm({
   value,
@@ -69,23 +72,6 @@ export function GestureSettingsForm({
     })();
   };
 
-  /**
-   * その場で動かして確かめる。
-   *
-   * 保存を待たずに見られるよう、編集中の割り当てをそのまま 3D ビューへ
-   * 載せてから動かす。
-   */
-  const tryOut = (index: number): void => {
-    const binding = value[index];
-    if (binding === undefined || problemAt(index) !== null) return;
-    setStatus(null);
-    void (async () => {
-      const store = useAppStore.getState();
-      await store.refreshGestures([...value]);
-      store.playGestures([{ tag: binding.tag, intensity: 1 }]);
-    })();
-  };
-
   return (
     <fieldset className="form__fieldset">
       <legend>身振り</legend>
@@ -119,13 +105,6 @@ export function GestureSettingsForm({
                 <div className="list__actions">
                   <button
                     type="button"
-                    disabled={problem !== null}
-                    onClick={() => tryOut(index)}
-                  >
-                    試す
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => onChange(value.filter((_, at) => at !== index))}
                   >
                     外す
@@ -148,6 +127,13 @@ export function GestureSettingsForm({
         タグ名は英小文字だけで書いてください。感情タグ（happy など）と同じ名前は
         使えません。VRM のみが対象です。PMX はボーン名が標準化されていないため
         動きません。
+      </p>
+
+      <p className="form__note">
+        <strong>動きを確かめるには、保存してこの画面を閉じ、「診断」を開いて
+        ください。</strong>
+        この画面はモデルの上に重なるため、ここで動かしても見えません。診断は横に
+        開くので、モデルを見たまま試せます。
       </p>
     </fieldset>
   );

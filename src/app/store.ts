@@ -24,7 +24,6 @@ import {
   type GestureCue,
 } from "@/domain/emotion/types";
 import { usableGestures } from "@/domain/motion/gesture";
-import type { GestureBinding } from "@/ipc/generated/GestureBinding";
 import { resolveDefaultPresets } from "@/domain/voice/emotion-preset";
 import {
   canEnterMascot,
@@ -185,12 +184,8 @@ export type AppState = {
   setModelDiagnostics: (diagnostics: ModelDiagnostics | null) => void;
   /** 感情を手で指定する。LLM と同じ経路を通るので切り分けに使える。 */
   previewEmotion: (emotion: CanonicalEmotion) => void;
-  /**
-   * 選択中のキャラクターの身振りを読み直す (要件 F-15)。
-   *
-   * @param override 保存前の割り当てを試すときに渡す。
-   */
-  refreshGestures: (override?: readonly GestureBinding[]) => Promise<void>;
+  /** 選択中のキャラクターの身振りを読み直す (要件 F-15)。 */
+  refreshGestures: () => Promise<void>;
   /** 待たずに身振りを始める。 */
   playGestures: (cues: readonly GestureCue[]) => void;
   /** 3D ビューが載せた結果を受け取る。 */
@@ -453,12 +448,12 @@ export function createAppStore(): UseBoundStore<
      * 毎回通す。開けなかったファイルもそのまま載せる。読めないことは
      * 3D ビュー側が知らせる。
      */
-    refreshGestures: async (override) => {
+    refreshGestures: async () => {
       const current = get();
       const character = current.characters.find(
         (item) => item.id === current.activeCharacterId,
       );
-      const usable = usableGestures(override ?? character?.gestures ?? []);
+      const usable = usableGestures(character?.gestures ?? []);
 
       for (const binding of usable) {
         try {
