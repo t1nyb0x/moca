@@ -1,8 +1,15 @@
 name: CI
 
+# **取り込む前にだけ回す。** 同じ中身を二度検査しない。
+#
+# 変更は必ず PR を通して入る。feature から develop へ、develop から main へ。
+# その二つの入口で確かめれば足りる。push でも回していたころは、版上げを push
+# した時点で 1 回、その commit で PR を開いて 1 回、main へ取り込んでもう 1 回と、
+# 同じ SHA を 3 度検査していた。
+#
+# main は Release ワークフローも守る。タグを打つ前に型チェックとテストを回し、
+# 通らなければインストーラを作らない。
 on:
-  push:
-    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 
