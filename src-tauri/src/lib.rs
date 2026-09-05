@@ -75,6 +75,7 @@ pub fn run() {
             commands::model::model_open,
             commands::motion::motion_pick,
             commands::motion::motion_open,
+            commands::motion::motion_bundled,
             commands::api::logs_dir,
             commands::api::log_client_error,
             commands::api::tts_speakers,
