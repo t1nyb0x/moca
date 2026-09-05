@@ -99,6 +99,14 @@ export const modelOpen = (path: string): Promise<ModelHandle> =>
 export const motionPick = (): Promise<MotionHandle | null> => call("motion_pick");
 
 /**
+ * 同梱している身振りを並べる (ADR-0020)。
+ *
+ * 自分たちで作った動きだけを同梱しているので、顔ぶれは版ごとに決まっている。
+ * 同梱物が見つからないときは空で返る。
+ */
+export const motionBundled = (): Promise<MotionHandle[]> => call("motion_bundled");
+
+/**
  * 保存済みの VRMA を開き直す。
  *
  * アセットプロトコルの許可はプロセスごとに消えるため、読ませる前に毎回通す。

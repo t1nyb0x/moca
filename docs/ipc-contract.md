@@ -236,6 +236,7 @@ type ModelHandle = {
 |---|---|---|
 | `motion_pick` | — | `MotionHandle \| null` |
 | `motion_open` | `path: string` | `MotionHandle` |
+| `motion_bundled` | — | `MotionHandle[]` |
 
 ```ts
 type MotionHandle = {
@@ -249,6 +250,8 @@ type MotionHandle = {
 VRMA は 1 ファイルで完結するので、許可するのはそのファイルだけでよい。PMX のようにディレクトリを開ける必要が無い。
 
 `motion_open` は保存済みのパスを開き直すために使う。**アセットプロトコルの許可はプロセスごとに消える**ので、読ませる前に毎回通す（C-3）。
+
+`motion_bundled` は同梱の身振りを並べる（[ADR-0020](adr/0020-bundle-only-our-own-motions.md)）。インストール先の `resources/gestures` を読み、`motion_open` と同じくスコープへ登録してから返す。**同梱物が見つからなくても失敗にしない。** 欠けているだけで身振りの機能そのものは動くので、空の配列を返して画面側に「無い」と出させる。
 
 ### 2.6 チャット
 

@@ -7,7 +7,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // scripts は同梱物を作るビルド時の道具。角度の符号を機械で確かめる
+    // ため、アプリの試験と同じ場所で走らせる。
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.mjs"],
     coverage: {
       provider: "v8",
       // ADR-0005 / ADR-0012: ロジック層のみを対象とする。

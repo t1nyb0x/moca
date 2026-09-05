@@ -4,6 +4,9 @@
 //! プロトコルのスコープへ登録し、three.js のローダーが WebView 側で直接
 //! 取得する (docs/ipc-contract.md 2.5)。
 //!
+//! **同梱の身振りもここから配る。** 自分たちで作ったものだけを同梱する
+//! 決まりなので、顔ぶれはビルド時に確定している (ADR-0020)。
+//!
 //! 扱うのは VRMA だけとする。VRM のための標準的なモーション形式であり、
 //! 人型ボーンの対応が仕様で保証されているため、モデルを選ばず当たる
 //! (ADR-0019)。
@@ -11,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use ts_rs::TS;
@@ -113,6 +117,45 @@ pub async fn motion_pick(app: AppHandle) -> Result<Option<MotionHandle>> {
         .map_err(|_| CommandError::invalid("ファイルの場所を解釈できませんでした"))?;
 
     open_path(&app, path).map(Some)
+}
+
+/// 同梱している身振りの置き場。インストール先の resources 以下。
+const BUNDLED_DIR: &str = "resources/gestures";
+
+/// 同梱の身振りを並べる (ADR-0020)。
+///
+/// 利用者が VRMA を用意しなくても、ひとつは試せるようにするためのもの。
+/// **見つからなくても失敗にしない。** 同梱物が欠けているだけで身振りの
+/// 機能そのものは動くので、空で返して画面側に「無い」と出させる。
+#[tauri::command]
+pub fn motion_bundled(app: AppHandle) -> Result<Vec<MotionHandle>> {
+    let Ok(dir) = app.path().resolve(BUNDLED_DIR, BaseDirectory::Resource) else {
+        tracing::warn!(target: "moca::commands", "同梱の身振りの場所を解決できない");
+        return Ok(Vec::new());
+    };
+
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        tracing::warn!(target: "moca::commands", path = ?dir, "同梱の身振りを読めない");
+        return Ok(Vec::new());
+    };
+
+    let mut handles = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if build_handle(&path).is_err() {
+            continue;
+        }
+        match open_path(&app, path) {
+            Ok(handle) => handles.push(handle),
+            Err(err) => {
+                tracing::warn!(target: "moca::commands", error = ?err, "同梱の身振りを開けない");
+            }
+        }
+    }
+
+    // 並び順を機械の都合に任せない。画面に出す順が起動ごとに変わらないように。
+    handles.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(handles)
 }
 
 /// 保存済みのパスを開き直す。起動時の復元に使う。
