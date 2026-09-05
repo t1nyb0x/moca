@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+import { DialogBackdrop } from "./DialogBackdrop";
+
 import { useAppStore } from "@/app/store";
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
 import type { MorphTarget } from "@/ipc/generated/MorphTarget";
@@ -68,8 +70,8 @@ export function MorphMappingDialog({
 
   if (current === null) {
     return (
-      <div className="dialog-backdrop" role="dialog" aria-modal="true">
-        <div className="dialog">
+      <DialogBackdrop onClose={onClose}>
+        <div className="dialog" role="dialog" aria-modal="true">
           <header className="dialog__header">
             <h2>表情の割り当て</h2>
             <button type="button" onClick={onClose}>
@@ -81,13 +83,13 @@ export function MorphMappingDialog({
             いるため、割り当ての必要がありません。
           </p>
         </div>
-      </div>
+      </DialogBackdrop>
     );
   }
 
   return (
-    <div className="dialog-backdrop" role="dialog" aria-modal="true">
-      <div className="dialog">
+    <DialogBackdrop onClose={onClose}>
+      <div className="dialog" role="dialog" aria-modal="true">
         <header className="dialog__header">
           <h2>表情の割り当て</h2>
           <button type="button" onClick={onClose}>
@@ -186,6 +188,6 @@ export function MorphMappingDialog({
           </button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

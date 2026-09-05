@@ -651,6 +651,31 @@ textarea {
   background: var(--surface);
 }
 
+/**
+ * 確認だけを載せる小さな板。設定画面の上へ重ねる。
+ *
+ * 帯として画面の中に出すと、下へ長い設定画面では見えない位置に出ることがある。
+ * 閉じてよいかを訊くものなので、目の前へ出す。
+ */
+.dialog--confirm {
+  width: min(24rem, 100%);
+  padding: 1.1rem 1.2rem 1.2rem;
+}
+
+.dialog--confirm h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.dialog--confirm .form__note {
+  margin: 0 0 1rem;
+}
+
+/** 押し間違いを減らすため、右端へ寄せて並べる。 */
+.form__actions--end {
+  justify-content: flex-end;
+}
+
 .dialog__header {
   display: flex;
   align-items: center;

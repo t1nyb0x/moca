@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DialogBackdrop } from "./DialogBackdrop";
 import { emptyVoiceSettings, VoiceSettingsForm } from "./VoiceSettingsForm";
 import { GestureSettingsForm } from "./GestureSettingsForm";
 
@@ -101,6 +102,59 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   /** 接続テストの結果。フォームの中に出す。上部に出すと画面外になる。 */
   const [health, setHealth] = useState<{ ok: boolean; text: string } | null>(null);
 
+  /**
+   * 編集を始めたときの姿。書きかけがあるかを、これとの違いで見る。
+   *
+   * 入力のたびに下書きへ書き込むので、「触ったかどうか」では判らない。開いた
+   * ときの姿と比べれば、元へ戻した場合も書きかけとは見なさずに済む。
+   */
+  const [providerBaseline, setProviderBaseline] = useState<string | null>(null);
+  const [characterBaseline, setCharacterBaseline] = useState<string | null>(null);
+
+  /** 保存せずに閉じようとしているか。確認を出しているあいだ true。 */
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
+  /** 接続先の編集を開く。閉じるときは null を渡す。 */
+  const openProvider = (item: ProviderProfileDto | null): void => {
+    setProvider(item);
+    setProviderBaseline(item === null ? null : JSON.stringify(item));
+    setApiKey("");
+    setHealth(null);
+    setConfirmingClose(false);
+  };
+
+  /** キャラクターの編集を開く。閉じるときは null を渡す。 */
+  const openCharacter = (item: CharacterProfile | null): void => {
+    setCharacter(item);
+    setCharacterBaseline(item === null ? null : JSON.stringify(item));
+    setConfirmingClose(false);
+  };
+
+  /**
+   * 保存していない書きかけがあるか。
+   *
+   * API キーは入力欄に残っていれば書きかけと見なす。保存すると空へ戻るので、
+   * 残っているということは、まだ渡していないということになる。
+   */
+  const unsaved =
+    (provider !== null &&
+      (JSON.stringify(provider) !== providerBaseline || apiKey !== "")) ||
+    (character !== null && JSON.stringify(character) !== characterBaseline);
+
+  /**
+   * 閉じようとする。書きかけがあれば、まず確認を出す。
+   *
+   * 背景を押して閉じられるようにしたぶん、うっかり閉じる目も増えた。書きかけを
+   * 黙って捨てない。
+   */
+  const requestClose = (): void => {
+    if (unsaved) {
+      setConfirmingClose(true);
+      return;
+    }
+    onClose();
+  };
+
   const run = async (task: () => Promise<void>): Promise<void> => {
     setError(null);
     try {
@@ -115,6 +169,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     const saved = await ipc.providerUpsert(target, apiKey === "" ? null : apiKey);
     setApiKey("");
     setProvider(saved);
+    setProviderBaseline(JSON.stringify(saved));
     await bootstrap();
     return saved;
   };
@@ -123,8 +178,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     if (provider === null) return;
     void run(async () => {
       await persist(provider);
-      setProvider(null);
-      setHealth(null);
+      openProvider(null);
       setNotice("接続先を保存しました");
     });
   };
@@ -156,14 +210,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   };
 
   return (
-    <div className="dialog-backdrop" role="dialog" aria-modal="true">
-      <div className="dialog">
+    <DialogBackdrop onClose={requestClose} enabled={!confirmingClose}>
+      {confirmingClose && (
+        <DialogBackdrop onClose={() => setConfirmingClose(false)}>
+          <div
+            className="dialog dialog--confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="保存していない変更があります"
+          >
+            <h2>保存していない変更があります</h2>
+            <p className="form__note">閉じると、書きかけの内容は失われます。</p>
+            <div className="form__actions form__actions--end">
+              <button type="button" onClick={() => setConfirmingClose(false)}>
+                編集に戻る
+              </button>
+              <button type="button" onClick={onClose}>
+                保存せずに閉じる
+              </button>
+            </div>
+          </div>
+        </DialogBackdrop>
+      )}
+
+      <div className="dialog" role="dialog" aria-modal="true">
         <header className="dialog__header">
           <h2>設定</h2>
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={requestClose}>
             閉じる
           </button>
         </header>
+
 
         {error !== null && (
           <ErrorBanner error={error} onDismiss={() => setError(null)} />
@@ -194,7 +271,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   <button
                     type="button"
                     onClick={() => {
-                      setProvider(item);
+                      openProvider(item);
                       setApiKey("");
                       setModels([]);
                       setHealth(null);
@@ -217,7 +294,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </li>
             ))}
           </ul>
-          <button type="button" onClick={() => setProvider(emptyProvider())}>
+          <button type="button" onClick={() => openProvider(emptyProvider())}>
             接続先を追加
           </button>
 
@@ -393,10 +470,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setProvider(null);
-                    setHealth(null);
-                  }}
+                  onClick={() => openProvider(null)}
                 >
                   やめる
                 </button>
@@ -455,7 +529,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   <small>{item.modelPath ?? "モデル未設定"}</small>
                 </span>
                 <span className="list__actions">
-                  <button type="button" onClick={() => setCharacter(item)}>
+                  <button type="button" onClick={() => openCharacter(item)}>
                     編集
                   </button>
                   <button
@@ -477,7 +551,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             type="button"
             disabled={providers.length === 0}
             title={providers.length === 0 ? "先に接続先を追加してください" : undefined}
-            onClick={() => setCharacter(emptyCharacter(providers[0]?.id ?? ""))}
+            onClick={() => openCharacter(emptyCharacter(providers[0]?.id ?? ""))}
           >
             キャラクターを追加
           </button>
@@ -539,7 +613,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   onClick={() =>
                     void run(async () => {
                       await ipc.characterUpsert(character);
-                      setCharacter(null);
+                      openCharacter(null);
                       setNotice("キャラクターを保存しました");
                       await bootstrap();
                     })
@@ -547,7 +621,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 >
                   保存
                 </button>
-                <button type="button" onClick={() => setCharacter(null)}>
+                <button type="button" onClick={() => openCharacter(null)}>
                   やめる
                 </button>
               </div>
@@ -555,6 +629,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           )}
         </section>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }
