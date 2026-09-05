@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
+import {
+  VRMLoaderPlugin,
+  VRMUtils,
+  type VRM,
+  type VRMHumanBoneName,
+} from "@pixiv/three-vrm";
 import {
   createVRMAnimationHumanoidTracks,
   VRMAnimationLoaderPlugin,
@@ -8,6 +13,12 @@ import {
 } from "@pixiv/three-vrm-animation";
 
 import { CANONICAL_EMOTIONS, type CanonicalEmotion } from "@/domain/emotion/types";
+import {
+  IDENTITY_QUATERNION,
+  rebaseClip,
+  type BoneTrack,
+  type Skeleton,
+} from "@/domain/motion/retarget";
 import {
   FINGER_CURL_SCALE,
   NATURAL_STANCE,
@@ -251,6 +262,16 @@ const GESTURE_FADE_SECONDS = 0.2;
  *
  * **腰の移動も使わない。** マスコット表示ではモデルの外接箱に合わせて窓を
  * 詰めており、動いているあいだに位置が変わると枠から出る (要件 F-13)。
+ *
+ * **モデルの立ち姿へ載せ替える** (要件 F-15-3-1、ADR-0019)。クリップの先頭
+ * からの差を取り、いまのボーンの回転へ左から掛ける (`rebaseTrack`)。
+ *
+ * そのまま書くと、クリップの休め姿勢がボーンに載る。腕を下ろした姿勢ひとつ
+ * 取ってもモデルごとに違い、**食い違うぶんだけ身振りの前後で腕が跳ねる。**
+ *
+ * three.js の加算ブレンドは使えない。あれは差を骨自身の側から掛けるので、
+ * **差の回転軸が土台の姿勢ごと傾く。** 腕を持ち上げる動きが外へ開く向きに
+ * 変わってしまう。差は親の側から掛けなければならない。
  */
 function createBodyClip(
   animation: VRMAnimation,
@@ -262,7 +283,61 @@ function createBodyClip(
     vrm.humanoid,
     vrm.meta.metaVersion,
   );
-  return new THREE.AnimationClip(name, undefined, [...rotation.values()]);
+
+  const skeleton = normalizedSkeleton(vrm);
+
+  const sources = new Map<string, BoneTrack>();
+  const names = new Map<string, { name: string; times: number[] }>();
+  for (const [bone, track] of rotation) {
+    if (vrm.humanoid.getNormalizedBoneNode(bone) === null) continue;
+    sources.set(bone, { times: track.times, values: track.values });
+    names.set(bone, { name: track.name, times: Array.from(track.times) });
+  }
+
+  const tracks: THREE.KeyframeTrack[] = [];
+  for (const [bone, values] of rebaseClip(sources, skeleton)) {
+    const source = names.get(bone);
+    if (source === undefined) continue;
+    tracks.push(new THREE.QuaternionKeyframeTrack(source.name, source.times, values));
+  }
+  return new THREE.AnimationClip(name, undefined, tracks);
+}
+
+/**
+ * 正規化された骨格から、立ち姿と親子関係を引けるようにする。
+ *
+ * **立ち姿は「いまの回転」を読む。** 読み込み時の調整 (腕を下ろす・指を握る)
+ * が済んだ後の値になる。親は、無い骨を飛ばして辿る。upperChest を持たない
+ * モデルでは chest が肩の親になる。
+ */
+function normalizedSkeleton(vrm: VRM): Skeleton {
+  const nodes = new Map<string, THREE.Object3D>();
+  const boneOf = new Map<THREE.Object3D, string>();
+
+  for (const bone of Object.keys(vrm.humanoid.normalizedHumanBones)) {
+    const node = vrm.humanoid.getNormalizedBoneNode(bone as VRMHumanBoneName);
+    if (node === null) continue;
+    nodes.set(bone, node);
+    boneOf.set(node, bone);
+  }
+
+  return {
+    restOf: (bone) => {
+      const rotation = nodes.get(bone)?.quaternion;
+      return rotation === undefined
+        ? IDENTITY_QUATERNION
+        : [rotation.x, rotation.y, rotation.z, rotation.w];
+    },
+    parentOf: (bone) => {
+      let node = nodes.get(bone)?.parent ?? null;
+      while (node !== null) {
+        const found = boneOf.get(node);
+        if (found !== undefined) return found;
+        node = node.parent;
+      }
+      return null;
+    },
+  };
 }
 
 /** 書き込みを試みる表情名。ここに無いキーは無視する。 */
@@ -463,8 +538,8 @@ export class VrmAdapter implements ModelAdapter {
   /**
    * 身振りを始める。
    *
-   * `intensity` はそのまま重みにする。1 未満なら基準の姿勢との中間になり、
-   * 動きが小さくなる。0 では何も起きないので始めない。
+   * `intensity` はそのまま重みにする。クリップは立ち姿から始まるので、
+   * 1 未満なら立ち姿との中間になり、動きが小さくなる。0 では何も起きない。
    */
   playGesture(tag: string, intensity: number): boolean {
     const clip = this.#clips.get(tag);
