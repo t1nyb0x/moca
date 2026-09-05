@@ -4,7 +4,7 @@ VRM / PMX 形式の 3D キャラクターモデルを表示し、そのキャラ
 
 Tauri v2 製。ローカル LLM（Ollama / LM Studio / llama.cpp）および外部 LLM API（Anthropic / OpenAI / Google Gemini）に対応する。
 
-現在の版は 0.8.0。VRM / PMX の表示、LLM との会話、感情に応じた表情と姿勢の
+現在の版は 0.9.0。VRM / PMX の表示、LLM との会話、感情に応じた表情と姿勢の
 変化、VRMA による身振り（手を振る動きを同梱）、音声での読み上げと音声駆動リップ
 シンク、接続先の切り替え、デスクトップマスコット表示まで動作する。PMX は表示だけの実験的対応と位置づけている。
 できること・できないことは [ロードマップ](docs/roadmap.md) を参照。
