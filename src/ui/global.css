@@ -652,6 +652,41 @@ textarea {
 }
 
 /**
+ * 書きかけがあるあいだ、下端に貼り付いて付いてくる帯。
+ *
+ * 保存ボタンは編集している欄の下にもあるが、設定画面は下へ長い。書き足して
+ * いるうちに、押すべきものが画面の外へ出ていく。**書きかけがあるあいだは、
+ * いつでも押せる場所に置く。**
+ */
+.dialog__footer {
+  position: sticky;
+  bottom: -1.4rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 1.2rem -1.2rem -1.4rem;
+  padding: 0.75rem 1.2rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 12px 12px;
+  background: var(--surface);
+}
+
+.dialog__footerText {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92em;
+}
+
+.button--primary {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/**
  * 確認だけを載せる小さな板。設定画面の上へ重ねる。
  *
  * 帯として画面の中に出すと、下へ長い設定画面では見えない位置に出ることがある。

@@ -136,10 +136,24 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
    * API キーは入力欄に残っていれば書きかけと見なす。保存すると空へ戻るので、
    * 残っているということは、まだ渡していないということになる。
    */
-  const unsaved =
-    (provider !== null &&
-      (JSON.stringify(provider) !== providerBaseline || apiKey !== "")) ||
-    (character !== null && JSON.stringify(character) !== characterBaseline);
+  const providerUnsaved =
+    provider !== null &&
+    (JSON.stringify(provider) !== providerBaseline || apiKey !== "");
+  const characterUnsaved =
+    character !== null && JSON.stringify(character) !== characterBaseline;
+  const unsaved = providerUnsaved || characterUnsaved;
+
+  /**
+   * 書きかけを一度に保存する。
+   *
+   * 接続先とキャラクターは別々に編集できるので、両方が書きかけのことがある。
+   * **接続先を先に保存する。** 追加したばかりの接続先をキャラクターが選んで
+   * いる場合、先に接続先が居ないと参照が宙に浮く。
+   */
+  const saveAll = (): void => {
+    if (providerUnsaved) saveProvider();
+    if (characterUnsaved) saveCharacter();
+  };
 
   /**
    * 閉じようとする。書きかけがあれば、まず確認を出す。
@@ -172,6 +186,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     setProviderBaseline(JSON.stringify(saved));
     await bootstrap();
     return saved;
+  };
+
+  const saveCharacter = (): void => {
+    if (character === null) return;
+    void run(async () => {
+      await ipc.characterUpsert(character);
+      openCharacter(null);
+      setNotice("キャラクターを保存しました");
+      await bootstrap();
+    });
   };
 
   const saveProvider = (): void => {
@@ -608,17 +632,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 />
               </fieldset>
               <div className="form__actions">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void run(async () => {
-                      await ipc.characterUpsert(character);
-                      openCharacter(null);
-                      setNotice("キャラクターを保存しました");
-                      await bootstrap();
-                    })
-                  }
-                >
+                <button type="button" onClick={saveCharacter}>
                   保存
                 </button>
                 <button type="button" onClick={() => openCharacter(null)}>
@@ -628,6 +642,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
           )}
         </section>
+
+        {unsaved && (
+          <footer className="dialog__footer" role="status">
+            <p className="dialog__footerText">保存していない変更があります</p>
+            <div className="form__actions">
+              <button type="button" onClick={requestClose}>
+                閉じる
+              </button>
+              <button type="button" className="button--primary" onClick={saveAll}>
+                保存
+              </button>
+            </div>
+          </footer>
+        )}
       </div>
     </DialogBackdrop>
   );
