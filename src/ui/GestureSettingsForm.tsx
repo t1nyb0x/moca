@@ -43,27 +43,32 @@ export function GestureSettingsForm({
     return problem === null ? null : describeGestureTagProblem(problem);
   };
 
-  /** ファイルを選んで一件足す。タグ名はファイル名から推測する。 */
-  const add = (): void => {
+  /**
+   * 読み込んだファイルを割り当てへ足す。
+   *
+   * タグ名はファイル名から推測する。そのまま使えるならそれを既定にし、
+   * 使えなければ空にして利用者に決めてもらう。
+   */
+  const append = (
+    handles: readonly { readonly path: string; readonly name: string }[],
+  ): void => {
+    const added: GestureBinding[] = [];
+    for (const handle of handles) {
+      const taken = [...value, ...added].map((item) => item.tag);
+      const guess = normalizeGestureTag(handle.name);
+      const tag = validateGestureTag(guess, taken) === null ? guess : "";
+      added.push({ tag, path: handle.path, name: handle.name });
+    }
+    onChange([...value, ...added]);
+  };
+
+  /** 押しているあいだの共通の後始末。 */
+  const run = (work: () => Promise<void>): void => {
     setBusy(true);
     setStatus(null);
     void (async () => {
       try {
-        const handle = await ipc.motionPick();
-        if (handle === null) return;
-
-        // ファイル名がそのままタグに使えるならそれを既定にする。使えなければ
-        // 空にして、利用者に決めてもらう。
-        const guess = normalizeGestureTag(handle.name);
-        const tag =
-          validateGestureTag(
-            guess,
-            value.map((item) => item.tag),
-          ) === null
-            ? guess
-            : "";
-
-        onChange([...value, { tag, path: handle.path, name: handle.name }]);
+        await work();
       } catch (error) {
         setStatus(ipc.toCommandError(error).message);
       } finally {
@@ -72,6 +77,37 @@ export function GestureSettingsForm({
     })();
   };
 
+  /** ファイルを選んで一件足す。 */
+  const add = (): void =>
+    run(async () => {
+      const handle = await ipc.motionPick();
+      if (handle === null) return;
+      append([handle]);
+    });
+
+  /**
+   * 同梱の身振りを足す (ADR-0020)。
+   *
+   * VRMA を持っていない人でも、ひとつは試せるようにするための入り口。
+   * 既に入っているものは飛ばす。押すたびに増えていくと分かりにくい。
+   */
+  const addBundled = (): void =>
+    run(async () => {
+      const bundled = await ipc.motionBundled();
+      const known = new Set(value.map((item) => item.path));
+      const fresh = bundled.filter((handle) => !known.has(handle.path));
+
+      if (bundled.length === 0) {
+        setStatus("同梱の身振りが見つかりませんでした");
+        return;
+      }
+      if (fresh.length === 0) {
+        setStatus("同梱の身振りはすべて追加済みです");
+        return;
+      }
+      append(fresh);
+    });
+
   return (
     <fieldset className="form__fieldset">
       <legend>身振り</legend>
@@ -79,7 +115,8 @@ export function GestureSettingsForm({
       <p className="form__note">
         VRMA を読み込んでタグ名を付けると、その名前が返答の指示として使えるように
         なります。返答に <code>[タグ名]</code> が出たら、その動きをします。
-        割り当てが無ければ何も起きません。
+        割り当てが無ければ何も起きません。手持ちの VRMA が無ければ、同梱の
+        <code>wave</code>（手を振る）から試せます。
       </p>
 
       {value.length > 0 && (
@@ -119,6 +156,9 @@ export function GestureSettingsForm({
       <div className="form__actions">
         <button type="button" disabled={busy} onClick={add}>
           VRMA を追加
+        </button>
+        <button type="button" disabled={busy} onClick={addBundled}>
+          同梱の身振りを追加
         </button>
       </div>
       {status !== null && <p className="form__note">{status}</p>}

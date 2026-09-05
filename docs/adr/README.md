@@ -36,3 +36,4 @@
 | [0017](0017-vrm-pmx-only.md) | moca は VRM と PMX に留まり、Unity 資産を扱わない | 採択 |
 | [0018](0018-cevio-over-com.md) | CeVIO AI を COM で直に叩く経路を持つ | 採択 |
 | [0019](0019-gestures-from-user-vrma.md) | 身振りは利用者が与える VRMA で行う | 採択 |
+| [0020](0020-bundle-only-our-own-motions.md) | 同梱する動きは自分たちで作ったものに限る | 採択 |
