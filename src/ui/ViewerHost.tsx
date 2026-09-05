@@ -108,8 +108,17 @@ export function ViewerHost(): React.JSX.Element {
 
     let clickThrough = false;
     let hitTimer: ReturnType<typeof setInterval> | null = null;
+    /**
+     * 当たり判定を回しているか。
+     *
+     * **止めたあとに書き込ませないための札。** 一回の判定は、カーソルの位置を
+     * 訊いて、素通しを切り替えるまでに二度待つ。その途中で通常表示へ戻ると、
+     * 後から届いた「素通しにする」が最後に効いて、窓が一切触れなくなる。
+     */
+    let hitTesting = false;
 
     const applyHitTest = async (): Promise<void> => {
+      if (!hitTesting) return;
       let point;
       try {
         point = await windowCursorPosition();
@@ -117,6 +126,8 @@ export function ViewerHost(): React.JSX.Element {
         // 取れない一回は見送る。次の巡回で取り直せばよい。
         return;
       }
+      if (!hitTesting) return;
+
       const next = !isSolidAt(point.x, point.y);
       if (next === clickThrough) return;
       clickThrough = next;
@@ -129,19 +140,21 @@ export function ViewerHost(): React.JSX.Element {
     };
 
     const stopHitTest = (): void => {
+      hitTesting = false;
       if (hitTimer !== null) {
         clearInterval(hitTimer);
         hitTimer = null;
       }
-      // 通常表示へ素通しを持ち込まない。残すと窓が一切触れなくなる。
-      if (clickThrough) {
-        clickThrough = false;
-        void windowSetClickThrough(false);
-      }
+      // **通常表示へ素通しを持ち込まない。残すと窓が一切触れなくなる。**
+      // 覚えている状態に関わらず必ず解く。取り違えていた場合に、触れない窓が
+      // 残るほうが害が大きい。
+      clickThrough = false;
+      void windowSetClickThrough(false);
     };
 
     const startHitTest = (): void => {
       if (hitTimer !== null) return;
+      hitTesting = true;
       hitTimer = setInterval(() => void applyHitTest(), HIT_TEST_INTERVAL_MS);
     };
 

@@ -110,6 +110,14 @@ pub fn window_set_mascot(window: Window, enabled: bool) -> Result<()> {
     window.set_shadow(!enabled).map_err(failed)?;
     window.set_always_on_top(enabled).map_err(failed)?;
 
+    // **通常表示へ素通しを持ち越さない** (要件 F-13-11-1)。当たり判定は画面側で
+    // 80ms ごとに回しており、切り替えの往復が終わる前に戻ると、後から届いた
+    // 「素通しにする」が最後に効いて窓が一切触れなくなる。画面側でも止めて
+    // いるが、ここでも塞ぐ。**触れない窓は詰みに近く、防ぎ方は重ねてよい。**
+    if !enabled {
+        window.set_ignore_cursor_events(false).map_err(failed)?;
+    }
+
     let min = if enabled {
         None
     } else {
